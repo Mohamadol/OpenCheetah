@@ -3,6 +3,7 @@
 #if USE_CHEETAH
 
 #include <gemini/cheetah/tensor.h>
+#include <gemini/core/util/perf_utils.h>
 
 #include "cheetah/cheetah-api.h"
 #include "defines_uniform.h"
@@ -10,7 +11,7 @@
 
 #define VERIFY_LAYERWISE
 #define LOG _LAYERWISE
-// #undef VERIFY_LAYERWISE // undefine this to turn OFF the verifcation
+#undef VERIFY_LAYERWISE // undefine this to turn OFF the verifcation
 // #undef LOG_LAYERWISE // undefine this to turn OFF the log
 
 #ifndef SCI_OT
@@ -21,7 +22,8 @@ extern uint64_t prime_mod;
 extern uint64_t moduloMask;
 extern uint64_t moduloMidPt;
 
-static inline int64_t getSignedVal(uint64_t x) {
+static inline int64_t getSignedVal(uint64_t x)
+{
   assert(x < prime_mod);
   int64_t sx = x;
   if (x >= moduloMidPt)
@@ -29,7 +31,8 @@ static inline int64_t getSignedVal(uint64_t x) {
   return sx;
 }
 
-static inline uint64_t getRingElt(int64_t x) {
+static inline uint64_t getRingElt(int64_t x)
+{
   return ((uint64_t)x) & moduloMask;
 }
 #endif
@@ -64,7 +67,8 @@ extern void ElemWiseActModelVectorMult_pt(uint64_t s1, uint64_1D &arr1,
 #endif
 
 void MatMul2D(int32_t d0, int32_t d1, int32_t d2, const intType *mat_A,
-              const intType *mat_B, intType *mat_C, bool is_A_weight_matrix) {
+              const intType *mat_B, intType *mat_C, bool is_A_weight_matrix)
+{
 #ifdef LOG_LAYERWISE
   INIT_ALL_IO_DATA_SENT;
   INIT_TIMER;
@@ -88,32 +92,40 @@ void MatMul2D(int32_t d0, int32_t d1, int32_t d2, const intType *mat_A,
   auto input_mat = is_A_weight_matrix ? mat_B : mat_A;
 
   Tensor<intType> weight_matrix;
-  if (cheetah_linear->party() == SERVER) {
+  if (cheetah_linear->party() == SERVER)
+  {
     // Transpose the weight matrix and convert the uint64_t to ring element
     weight_matrix.Reshape(meta.weight_shape);
     const size_t nrows = weight_shape.dim_size(0);
     const size_t ncols = weight_shape.dim_size(1);
-    for (long r = 0; r < nrows; ++r) {
-      for (long c = 0; c < ncols; ++c) {
+    for (long r = 0; r < nrows; ++r)
+    {
+      for (long c = 0; c < ncols; ++c)
+      {
         Arr2DIdxRowM(weight_matrix.data(), ncols, nrows, c, r) =
             getRingElt(Arr2DIdxRowM(weight_mat, nrows, ncols, r, c));
       }
     }
   }
 
-  for (long r = 0; r < input_shape.rows(); ++r) {
+  for (long r = 0; r < input_shape.rows(); ++r)
+  {
     // row-major
     const intType *input_row = input_mat + r * input_shape.cols();
 
     Tensor<intType> input_vector;
-    if (meta.is_shared_input) {
+    if (meta.is_shared_input)
+    {
       input_vector = Tensor<intType>::Wrap(const_cast<intType *>(input_row),
                                            meta.input_shape);
-    } else {
+    }
+    else
+    {
       input_vector.Reshape(meta.input_shape);
       std::transform(input_row, input_row + meta.input_shape.num_elements(),
                      input_vector.data(),
-                     [](uint64_t v) { return getRingElt(v); });
+                     [](uint64_t v)
+                     { return getRingElt(v); });
     }
 
     Tensor<uint64_t> out_vec;
@@ -122,7 +134,8 @@ void MatMul2D(int32_t d0, int32_t d1, int32_t d2, const intType *mat_A,
                 mat_C + r * input_shape.cols());
   }
 
-  if (cheetah_linear->party() == SERVER) {
+  if (cheetah_linear->party() == SERVER)
+  {
     cheetah_linear->safe_erase(weight_matrix.data(),
                                meta.weight_shape.num_elements());
   }
@@ -144,17 +157,22 @@ void MatMul2D(int32_t d0, int32_t d1, int32_t d2, const intType *mat_A,
   auto B = mat_B;
   auto C = mat_C;
 #ifdef SCI_HE
-  for (int i = 0; i < s1; i++) {
-    for (int j = 0; j < s3; j++) {
+  for (int i = 0; i < s1; i++)
+  {
+    for (int j = 0; j < s3; j++)
+    {
       assert(Arr2DIdxRowM(C, s1, s3, i, j) < prime_mod);
     }
   }
 #endif
-  if (party == SERVER) {
+  if (party == SERVER)
+  {
     funcReconstruct2PCCons(nullptr, A, s1 * s2);
     funcReconstruct2PCCons(nullptr, B, s2 * s3);
     funcReconstruct2PCCons(nullptr, C, s1 * s3);
-  } else {
+  }
+  else
+  {
     signedIntType *VA = new signedIntType[s1 * s2];
     funcReconstruct2PCCons(VA, A, s1 * s2);
     signedIntType *VB = new signedIntType[s2 * s3];
@@ -169,13 +187,17 @@ void MatMul2D(int32_t d0, int32_t d1, int32_t d2, const intType *mat_A,
     VBvec.resize(s2, std::vector<uint64_t>(s3, 0));
     VCvec.resize(s1, std::vector<uint64_t>(s3, 0));
 
-    for (int i = 0; i < s1; i++) {
-      for (int j = 0; j < s2; j++) {
+    for (int i = 0; i < s1; i++)
+    {
+      for (int j = 0; j < s2; j++)
+      {
         VAvec[i][j] = getRingElt(Arr2DIdxRowM(VA, s1, s2, i, j));
       }
     }
-    for (int i = 0; i < s2; i++) {
-      for (int j = 0; j < s3; j++) {
+    for (int i = 0; i < s2; i++)
+    {
+      for (int j = 0; j < s3; j++)
+      {
         VBvec[i][j] = getRingElt(Arr2DIdxRowM(VB, s2, s3, i, j));
       }
     }
@@ -183,15 +205,20 @@ void MatMul2D(int32_t d0, int32_t d1, int32_t d2, const intType *mat_A,
     MatMul2DEigen_pt(s1, s2, s3, VAvec, VBvec, VCvec, 0);
 
     bool pass = true;
-    for (int i = 0; i < s1; i++) {
-      for (int j = 0; j < s3; j++) {
+    for (int i = 0; i < s1; i++)
+    {
+      for (int j = 0; j < s3; j++)
+      {
         int64_t gnd = getSignedVal(VCvec[i][j]);
         int64_t cmp = Arr2DIdxRowM(VC, s1, s3, i, j);
-        if (gnd != cmp) {
-          if (pass) {
+        if (gnd != cmp)
+        {
+          if (pass)
+          {
             std::cout << gnd << " => " << cmp << "\n";
           }
-          if (pass && std::abs(gnd - cmp) > 1) {
+          if (pass && std::abs(gnd - cmp) > 1)
+          {
             pass = false;
           }
         }
@@ -215,16 +242,19 @@ void Conv2DWrapper(signedIntType N, signedIntType H, signedIntType W,
                    signedIntType zPadHRight, signedIntType zPadWLeft,
                    signedIntType zPadWRight, signedIntType strideH,
                    signedIntType strideW, intType *inputArr, intType *filterArr,
-                   intType *outArr) {
+                   intType *outArr)
+{
 #ifdef LOG_LAYERWISE
   INIT_ALL_IO_DATA_SENT;
   INIT_TIMER;
 #endif
 
-  if (zPadWLeft < zPadWRight) {
+  if (zPadWLeft < zPadWRight)
+  {
     std::swap(zPadWLeft, zPadWRight);
   }
-  if (zPadHLeft < zPadHRight) {
+  if (zPadHLeft < zPadHRight)
+  {
     std::swap(zPadHLeft, zPadHRight);
   }
   static int ctr = 1;
@@ -237,14 +267,19 @@ void Conv2DWrapper(signedIntType N, signedIntType H, signedIntType W,
   meta.n_filters = CO;
 
   std::vector<gemini::Tensor<intType>> filters(CO);
-  for (auto &f : filters) {
+  for (auto &f : filters)
+  {
     f.Reshape(meta.fshape);
   }
 
-  for (int i = 0; i < FH; i++) {
-    for (int j = 0; j < FW; j++) {
-      for (int k = 0; k < CI; k++) {
-        for (int p = 0; p < CO; p++) {
+  for (int i = 0; i < FH; i++)
+  {
+    for (int j = 0; j < FW; j++)
+    {
+      for (int k = 0; k < CI; k++)
+      {
+        for (int p = 0; p < CO; p++)
+        {
           filters.at(p)(k, i, j) =
               getRingElt(Arr4DIdxRowM(filterArr, FH, FW, CI, CO, i, j, k, p));
         }
@@ -269,11 +304,17 @@ void Conv2DWrapper(signedIntType N, signedIntType H, signedIntType W,
   const int64_t io_counter = cheetah_linear->io_counter();
 #endif
 
-  for (int i = 0; i < N; ++i) {
+  gemini::perf::StageTimer conv_stage("Stage: HE-CONV");
+
+  for (int i = 0; i < N; ++i)
+  {
     gemini::Tensor<intType> image(meta.ishape);
-    for (int j = 0; j < H; j++) {
-      for (int k = 0; k < W; k++) {
-        for (int p = 0; p < CI; p++) {
+    for (int j = 0; j < H; j++)
+    {
+      for (int k = 0; k < W; k++)
+      {
+        for (int p = 0; p < CI; p++)
+        {
           image(p, j, k) =
               getRingElt(Arr4DIdxRowM(inputArr, N, H, W, CI, i, j, k, p));
         }
@@ -283,15 +324,20 @@ void Conv2DWrapper(signedIntType N, signedIntType H, signedIntType W,
     gemini::Tensor<intType> out_tensor;
     cheetah_linear->conv2d(image, filters, meta, out_tensor);
 
-    for (int j = 0; j < newH; j++) {
-      for (int k = 0; k < newW; k++) {
-        for (int p = 0; p < CO; p++) {
+    for (int j = 0; j < newH; j++)
+    {
+      for (int k = 0; k < newW; k++)
+      {
+        for (int p = 0; p < CO; p++)
+        {
           Arr4DIdxRowM(outArr, N, newH, newW, CO, i, j, k, p) =
               out_tensor(p, j, k);
         }
       }
     }
   }
+
+  conv_stage.done();
 
 #ifdef LOG_LAYERWISE
   auto temp = TIMER_TILL_NOW;
@@ -308,10 +354,14 @@ void Conv2DWrapper(signedIntType N, signedIntType H, signedIntType W,
 
 #ifdef VERIFY_LAYERWISE
 #ifdef SCI_HE
-  for (int i = 0; i < N; i++) {
-    for (int j = 0; j < newH; j++) {
-      for (int k = 0; k < newW; k++) {
-        for (int p = 0; p < CO; p++) {
+  for (int i = 0; i < N; i++)
+  {
+    for (int j = 0; j < newH; j++)
+    {
+      for (int k = 0; k < newW; k++)
+      {
+        for (int p = 0; p < CO; p++)
+        {
           assert(Arr4DIdxRowM(outArr, N, newH, newW, CO, i, j, k, p) <
                  prime_mod);
         }
@@ -320,11 +370,14 @@ void Conv2DWrapper(signedIntType N, signedIntType H, signedIntType W,
   }
 #endif // SCI_HE
 
-  if (party == SERVER) {
+  if (party == SERVER)
+  {
     funcReconstruct2PCCons(nullptr, inputArr, N * H * W * CI);
     funcReconstruct2PCCons(nullptr, filterArr, FH * FW * CI * CO);
     funcReconstruct2PCCons(nullptr, outArr, N * newH * newW * CO);
-  } else {
+  }
+  else
+  {
     signedIntType *VinputArr = new signedIntType[N * H * W * CI];
     funcReconstruct2PCCons(VinputArr, inputArr, N * H * W * CI);
     signedIntType *VfilterArr = new signedIntType[FH * FW * CI * CO];
@@ -347,20 +400,28 @@ void Conv2DWrapper(signedIntType N, signedIntType H, signedIntType W,
                              newH, std::vector<std::vector<uint64_t>>(
                                        newW, std::vector<uint64_t>(CO, 0))));
 
-    for (int i = 0; i < N; i++) {
-      for (int j = 0; j < H; j++) {
-        for (int k = 0; k < W; k++) {
-          for (int p = 0; p < CI; p++) {
+    for (int i = 0; i < N; i++)
+    {
+      for (int j = 0; j < H; j++)
+      {
+        for (int k = 0; k < W; k++)
+        {
+          for (int p = 0; p < CI; p++)
+          {
             VinputVec[i][j][k][p] =
                 getRingElt(Arr4DIdxRowM(VinputArr, N, H, W, CI, i, j, k, p));
           }
         }
       }
     }
-    for (int i = 0; i < FH; i++) {
-      for (int j = 0; j < FW; j++) {
-        for (int k = 0; k < CI; k++) {
-          for (int p = 0; p < CO; p++) {
+    for (int i = 0; i < FH; i++)
+    {
+      for (int j = 0; j < FW; j++)
+      {
+        for (int k = 0; k < CI; k++)
+        {
+          for (int p = 0; p < CO; p++)
+          {
             VfilterVec[i][j][k][p] = getRingElt(
                 Arr4DIdxRowM(VfilterArr, FH, FW, CI, CO, i, j, k, p));
           }
@@ -375,28 +436,36 @@ void Conv2DWrapper(signedIntType N, signedIntType H, signedIntType W,
     bool pass = true;
     int err_cnt = 0;
     int pos_one = 0, neg_one = 0;
-    for (int i = 0; i < N; i++) {
-      for (int j = 0; j < newH; j++) {
-        for (int k = 0; k < newW; k++) {
-          for (int p = 0; p < CO; p++) {
+    for (int i = 0; i < N; i++)
+    {
+      for (int j = 0; j < newH; j++)
+      {
+        for (int k = 0; k < newW; k++)
+        {
+          for (int p = 0; p < CO; p++)
+          {
             int64_t gnd =
                 Arr4DIdxRowM(VoutputArr, N, newH, newW, CO, i, j, k, p);
             int64_t cmp = getSignedVal(VoutputVec[i][j][k][p]);
             int64_t diff = gnd - cmp;
 
-            if (diff != 0) {
+            if (diff != 0)
+            {
 
-              if (diff > 0 && pos_one < 2) {
+              if (diff > 0 && pos_one < 2)
+              {
                 std::cout << "expect " << gnd << " but got " << cmp << "\n";
               }
 
-              if (diff < 0 && neg_one < 2) {
+              if (diff < 0 && neg_one < 2)
+              {
                 std::cout << "expect " << gnd << " but got " << cmp << "\n";
               }
 
               pos_one += (diff > 0);
               neg_one += (diff < 0);
-              if (pass && std::abs(diff) > 1) {
+              if (pass && std::abs(diff) > 1)
+              {
                 pass = false;
               }
               ++err_cnt;
@@ -406,9 +475,12 @@ void Conv2DWrapper(signedIntType N, signedIntType H, signedIntType W,
       }
     }
 
-    if (pass == true) {
+    if (pass == true)
+    {
       std::cout << GREEN << "Convolution Output Matches" << RESET << std::endl;
-    } else {
+    }
+    else
+    {
       std::cout << RED << "Convolution Output Mismatch" << RESET << std::endl;
       printf("Error count %d (%d +1, %d -1). %f\%\n", err_cnt, pos_one, neg_one,
              static_cast<double>(err_cnt) * 100. / (N * newH * newW * CO));
@@ -423,7 +495,8 @@ void Conv2DWrapper(signedIntType N, signedIntType H, signedIntType W,
 
 void BatchNorm(int32_t B, int32_t H, int32_t W, int32_t C,
                const intType *inputArr, const intType *scales,
-               const intType *bias, intType *outArr) {
+               const intType *bias, intType *outArr)
+{
   CountElementMul += (B * H * W * C);
 #ifdef LOG_LAYERWISE
   INIT_ALL_IO_DATA_SENT;
@@ -442,16 +515,21 @@ void BatchNorm(int32_t B, int32_t H, int32_t W, int32_t C,
 
   gemini::Tensor<intType> scale_vec;
   scale_vec.Reshape(gemini::TensorShape({C}));
-  if (cheetah_linear->party() == SERVER) {
+  if (cheetah_linear->party() == SERVER)
+  {
     std::transform(scales, scales + C, scale_vec.data(), getRingElt);
   }
 
   gemini::Tensor<intType> in_tensor(meta.ishape);
   gemini::Tensor<intType> out_tensor;
-  for (int b = 0; b < B; ++b) {
-    for (int32_t h = 0; h < H; ++h) {
-      for (int32_t w = 0; w < W; ++w) {
-        for (int32_t c = 0; c < C; ++c) {
+  for (int b = 0; b < B; ++b)
+  {
+    for (int32_t h = 0; h < H; ++h)
+    {
+      for (int32_t w = 0; w < W; ++w)
+      {
+        for (int32_t c = 0; c < C; ++c)
+        {
           in_tensor(c, h, w) =
               getRingElt(Arr4DIdxRowM(inputArr, B, H, W, C, b, h, w, c));
         }
@@ -460,9 +538,12 @@ void BatchNorm(int32_t B, int32_t H, int32_t W, int32_t C,
 
     cheetah_linear->bn_direct(in_tensor, scale_vec, meta, out_tensor);
 
-    for (int32_t h = 0; h < H; ++h) {
-      for (int32_t w = 0; w < W; ++w) {
-        for (int32_t c = 0; c < C; ++c) {
+    for (int32_t h = 0; h < H; ++h)
+    {
+      for (int32_t w = 0; w < W; ++w)
+      {
+        for (int32_t c = 0; c < C; ++c)
+        {
           Arr4DIdxRowM(outArr, B, H, W, C, b, h, w, c) =
               SecretAdd(out_tensor(c, h, w), bias[c]);
         }
@@ -470,7 +551,8 @@ void BatchNorm(int32_t B, int32_t H, int32_t W, int32_t C,
     }
   }
 
-  if (cheetah_linear->party() == SERVER) {
+  if (cheetah_linear->party() == SERVER)
+  {
     cheetah_linear->safe_erase(scale_vec.data(), scale_vec.NumElements());
   }
 
@@ -486,7 +568,8 @@ void BatchNorm(int32_t B, int32_t H, int32_t W, int32_t C,
 }
 
 void ElemWiseActModelVectorMult(int32_t size, intType *inArr,
-                                intType *multArrVec, intType *outputArr) {
+                                intType *multArrVec, intType *outputArr)
+{
   CountElementMul += size;
 #ifdef LOG_LAYERWISE
   INIT_ALL_IO_DATA_SENT;
@@ -505,13 +588,17 @@ void ElemWiseActModelVectorMult(int32_t size, intType *inArr,
   gemini::Tensor<intType> in_vec;
   gemini::Tensor<intType> scale_vec;
   scale_vec.Reshape(meta.vec_shape);
-  if (cheetah_linear->party() == SERVER) {
+  if (cheetah_linear->party() == SERVER)
+  {
     std::transform(multArrVec, multArrVec + size, scale_vec.data(), getRingElt);
   }
 
-  if (meta.is_shared_input) {
+  if (meta.is_shared_input)
+  {
     in_vec = gemini::Tensor<intType>::Wrap(inArr, meta.vec_shape);
-  } else {
+  }
+  else
+  {
     in_vec.Reshape(meta.vec_shape);
     std::transform(inArr, inArr + size, in_vec.data(), getRingElt);
   }
@@ -519,7 +606,8 @@ void ElemWiseActModelVectorMult(int32_t size, intType *inArr,
   cheetah_linear->bn(in_vec, scale_vec, meta, out_vec);
   std::copy_n(out_vec.data(), out_vec.shape().num_elements(), outputArr);
 
-  if (cheetah_linear->party() == SERVER) {
+  if (cheetah_linear->party() == SERVER)
+  {
     cheetah_linear->safe_erase(scale_vec.data(), scale_vec.NumElements());
   }
 
@@ -532,15 +620,19 @@ void ElemWiseActModelVectorMult(int32_t size, intType *inArr,
 #endif
 
 #ifdef VERIFY_LAYERWISE
-  for (int i = 0; i < size; i++) {
+  for (int i = 0; i < size; i++)
+  {
     assert(outputArr[i] < prime_mod);
   }
 
-  if (party == SERVER) {
+  if (party == SERVER)
+  {
     funcReconstruct2PCCons(nullptr, inArr, size);
     funcReconstruct2PCCons(nullptr, multArrVec, size);
     funcReconstruct2PCCons(nullptr, outputArr, size);
-  } else {
+  }
+  else
+  {
     signedIntType *VinArr = new signedIntType[size];
     funcReconstruct2PCCons(VinArr, inArr, size);
     signedIntType *VmultArr = new signedIntType[size];
@@ -552,7 +644,8 @@ void ElemWiseActModelVectorMult(int32_t size, intType *inArr,
     std::vector<uint64_t> VmultVec(size);
     std::vector<uint64_t> VoutputVec(size);
 
-    for (int i = 0; i < size; i++) {
+    for (int i = 0; i < size; i++)
+    {
       VinVec[i] = getRingElt(VinArr[i]);
       VmultVec[i] = getRingElt(VmultArr[i]);
     }
@@ -560,11 +653,14 @@ void ElemWiseActModelVectorMult(int32_t size, intType *inArr,
     ElemWiseActModelVectorMult_pt(size, VinVec, VmultVec, VoutputVec);
 
     bool pass = true;
-    for (int i = 0; i < size; i++) {
+    for (int i = 0; i < size; i++)
+    {
       int64_t gnd = getSignedVal(VoutputVec[i]);
       int64_t cmp = VoutputArr[i];
-      if (gnd != cmp) {
-        if (pass) {
+      if (gnd != cmp)
+      {
+        if (pass)
+        {
           std::cout << RED << gnd << " ==> " << cmp << RESET << std::endl;
         }
         pass = false;

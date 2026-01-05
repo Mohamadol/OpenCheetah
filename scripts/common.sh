@@ -53,4 +53,4 @@ FXP_SCALE=12
 # secret sharing bit length
 SS_BITLEN=37
 # number of threads (should <= 4 for the SCI)
-NUM_THREADS=4
+NUM_THREADS=8

@@ -7,18 +7,24 @@
 #include <chrono>
 
 #include "library_fixed.h"
+
+#if USE_CHEETAH
+#include <gemini/core/util/perf_utils.h>
+#endif
+
 using namespace std;
 #define USE_FUSED_BN 1
 
 int party = 0;
 int port = 32000;
 string address = "127.0.0.1";
-int num_threads = 4;
+int num_threads = 8;
 int32_t bitlength = 41;
 int32_t kScale = 12;
 int32_t kDoExtractTruncate = 1;
 
-int64_t getSignValue(uint64_t x) {
+int64_t getSignValue(uint64_t x)
+{
   static int64_t upper = 1LL << bitlength;
   static uint64_t mask = static_cast<uint64_t>(upper) - 1;
   static uint64_t half = static_cast<uint64_t>(upper) >> 1;
@@ -28,9 +34,12 @@ int64_t getSignValue(uint64_t x) {
 }
 
 void MatAddBroadCast2(int64_t s1, int64_t s2, uint64_t *A, uint64_t *B,
-                      uint64_t *outArr) {
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
+                      uint64_t *outArr)
+{
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
       Arr2DIdxRowM(outArr, s1, s2, i1, i2) =
           SecretAdd(Arr2DIdxRowM(A, s1, s2, i1, i2), Arr1DIdxRowM(B, s2, i2));
     }
@@ -38,11 +47,16 @@ void MatAddBroadCast2(int64_t s1, int64_t s2, uint64_t *A, uint64_t *B,
 }
 
 void MatAdd4(int64_t s1, int64_t s2, int64_t s3, int64_t s4, uint64_t *A,
-             uint64_t *B, uint64_t *outArr) {
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
+             uint64_t *B, uint64_t *outArr)
+{
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
           Arr4DIdxRowM(outArr, s1, s2, s3, s4, i1, i2, i3, i4) =
               SecretAdd(Arr4DIdxRowM(A, s1, s2, s3, s4, i1, i2, i3, i4),
                         Arr4DIdxRowM(B, s1, s2, s3, s4, i1, i2, i3, i4));
@@ -53,11 +67,16 @@ void MatAdd4(int64_t s1, int64_t s2, int64_t s3, int64_t s4, uint64_t *A,
 }
 
 void Conv2DReshapeFilter(int64_t FH, int64_t FW, int64_t CI, int64_t CO,
-                         uint64_t *inputArr, uint64_t *outputArr) {
-  for (uint64_t co = 0; co < CO; co++) {
-    for (uint64_t fh = 0; fh < FH; fh++) {
-      for (uint64_t fw = 0; fw < FW; fw++) {
-        for (uint64_t ci = 0; ci < CI; ci++) {
+                         uint64_t *inputArr, uint64_t *outputArr)
+{
+  for (uint64_t co = 0; co < CO; co++)
+  {
+    for (uint64_t fh = 0; fh < FH; fh++)
+    {
+      for (uint64_t fw = 0; fw < FW; fw++)
+      {
+        for (uint64_t ci = 0; ci < CI; ci++)
+        {
           int64_t linIdx = ((((fh * FW) * CI) + (fw * CI)) + ci);
           Arr2DIdxRowM(outputArr, CO, ((FH * FW) * CI), co, linIdx) =
               Arr4DIdxRowM(inputArr, FH, FW, CI, CO, fh, fw, ci, co);
@@ -69,11 +88,16 @@ void Conv2DReshapeFilter(int64_t FH, int64_t FW, int64_t CI, int64_t CO,
 
 void Conv2DReshapeMatMulOP(int64_t N, int64_t finalH, int64_t finalW,
                            int64_t CO, uint64_t *inputArr,
-                           uint64_t *outputArr) {
-  for (uint64_t co = 0; co < CO; co++) {
-    for (uint64_t n = 0; n < N; n++) {
-      for (uint64_t h = 0; h < finalH; h++) {
-        for (uint64_t w = 0; w < finalW; w++) {
+                           uint64_t *outputArr)
+{
+  for (uint64_t co = 0; co < CO; co++)
+  {
+    for (uint64_t n = 0; n < N; n++)
+    {
+      for (uint64_t h = 0; h < finalH; h++)
+      {
+        for (uint64_t w = 0; w < finalW; w++)
+        {
           Arr4DIdxRowM(outputArr, N, finalH, finalW, CO, n, h, w, co) =
               Arr2DIdxRowM(inputArr, CO, ((N * finalH) * finalW), co,
                            ((((n * finalH) * finalW) + (h * finalW)) + w));
@@ -87,29 +111,39 @@ void Conv2DReshapeInput(int64_t N, int64_t H, int64_t W, int64_t CI, int64_t FH,
                         int64_t FW, int64_t zPadHLeft, int64_t zPadHRight,
                         int64_t zPadWLeft, int64_t zPadWRight, int64_t strideH,
                         int64_t strideW, int64_t RRows, int64_t RCols,
-                        uint64_t *inputArr, uint64_t *outputArr) {
+                        uint64_t *inputArr, uint64_t *outputArr)
+{
   int64_t linIdxFilterMult = 0;
-  for (uint64_t n = 0; n < N; n++) {
+  for (uint64_t n = 0; n < N; n++)
+  {
     int64_t leftTopCornerH = (0 - zPadHLeft);
 
     int64_t extremeRightBottomCornerH = ((H - 1) + zPadHRight);
-    while ((((leftTopCornerH + FH) - 1) <= extremeRightBottomCornerH)) {
+    while ((((leftTopCornerH + FH) - 1) <= extremeRightBottomCornerH))
+    {
       int64_t leftTopCornerW = (0 - zPadWLeft);
 
       int64_t extremeRightBottomCornerW = ((W - 1) + zPadWRight);
-      while ((((leftTopCornerW + FW) - 1) <= extremeRightBottomCornerW)) {
-        for (uint64_t fh = 0; fh < FH; fh++) {
-          for (uint64_t fw = 0; fw < FW; fw++) {
+      while ((((leftTopCornerW + FW) - 1) <= extremeRightBottomCornerW))
+      {
+        for (uint64_t fh = 0; fh < FH; fh++)
+        {
+          for (uint64_t fw = 0; fw < FW; fw++)
+          {
             int64_t curPosH = (leftTopCornerH + fh);
 
             int64_t curPosW = (leftTopCornerW + fw);
 
             uint64_t val = funcSSCons((int64_t)0);
-            for (uint64_t ci = 0; ci < CI; ci++) {
+            for (uint64_t ci = 0; ci < CI; ci++)
+            {
               if ((((curPosH < 0) || (curPosH >= H)) ||
-                   ((curPosW < 0) || (curPosW >= W)))) {
+                   ((curPosW < 0) || (curPosW >= W))))
+              {
                 val = funcSSCons((int64_t)0);
-              } else {
+              }
+              else
+              {
                 val = Arr4DIdxRowM(inputArr, N, H, W, CI, n, curPosH, curPosW,
                                    ci);
               }
@@ -133,16 +167,23 @@ void Conv2DLoopInner(int64_t N, int64_t H, int64_t W, int64_t CI, int64_t FH,
                      int64_t zPadHRight, int64_t zPadWLeft, int64_t zPadWRight,
                      int64_t strideH, int64_t strideW, int64_t outH,
                      int64_t outW, int64_t G, uint64_t *inputArr,
-                     uint64_t *filterArr, uint64_t *outArr) {
+                     uint64_t *filterArr, uint64_t *outArr)
+{
   int64_t GIS = (CI / G);
 
   int64_t GOS = (CO / G);
-  for (uint64_t n = 0; n < N; n++) {
-    for (uint64_t cog = 0; cog < GOS; cog++) {
-      for (uint64_t cig = 0; cig < GIS; cig++) {
-        for (uint64_t g = 0; g < G; g++) {
-          for (uint64_t h = 0; h < outH; h++) {
-            for (uint64_t w = 0; w < outW; w++) {
+  for (uint64_t n = 0; n < N; n++)
+  {
+    for (uint64_t cog = 0; cog < GOS; cog++)
+    {
+      for (uint64_t cig = 0; cig < GIS; cig++)
+      {
+        for (uint64_t g = 0; g < G; g++)
+        {
+          for (uint64_t h = 0; h < outH; h++)
+          {
+            for (uint64_t w = 0; w < outW; w++)
+            {
               uint64_t val = funcSSCons((int64_t)0);
 
               int64_t ci = ((GIS * g) + cig);
@@ -150,11 +191,14 @@ void Conv2DLoopInner(int64_t N, int64_t H, int64_t W, int64_t CI, int64_t FH,
               int64_t co = ((GOS * g) + cog);
 
               int64_t curPosH = ((strideH * h) - zPadHLeft);
-              for (uint64_t fh = 0; fh < FH; fh++) {
+              for (uint64_t fh = 0; fh < FH; fh++)
+              {
                 int64_t curPosW = ((strideW * w) - zPadWLeft);
-                for (uint64_t fw = 0; fw < FW; fw++) {
+                for (uint64_t fw = 0; fw < FW; fw++)
+                {
                   if (((((curPosH >= 0) && (curPosW >= 0)) && (curPosH < H)) &&
-                       (curPosW < W))) {
+                       (curPosW < W)))
+                  {
                     val = SecretAdd(
                         val,
                         SecretMult(Arr4DIdxRowM(inputArr, N, H, W, CI, n,
@@ -180,7 +224,8 @@ void Conv2DLoop(int64_t N, int64_t H, int64_t W, int64_t CI, int64_t FH,
                 int64_t FW, int64_t CO, int64_t zPadHLeft, int64_t zPadHRight,
                 int64_t zPadWLeft, int64_t zPadWRight, int64_t strideH,
                 int64_t strideW, int64_t G, uint64_t *inputArr,
-                uint64_t *filterArr, uint64_t *outArr) {
+                uint64_t *filterArr, uint64_t *outArr)
+{
   int64_t outH = ((((H - FH) + (zPadHLeft + zPadHRight)) / strideH) + 1);
 
   int64_t outW = ((((W - FW) + (zPadWLeft + zPadWRight)) / strideW) + 1);
@@ -191,16 +236,21 @@ void Conv2DLoop(int64_t N, int64_t H, int64_t W, int64_t CI, int64_t FH,
 
 void Conv2DReshapeFilterGroup(int64_t FH, int64_t FW, int64_t CI, int64_t CO,
                               int64_t g, int64_t G, uint64_t *inputArr,
-                              uint64_t *outputArr) {
+                              uint64_t *outputArr)
+{
   int64_t CIG = (CI / G);
 
   int64_t COG = (CO / G);
 
   int64_t startCO = (g * COG);
-  for (uint64_t co = 0; co < COG; co++) {
-    for (uint64_t fh = 0; fh < FH; fh++) {
-      for (uint64_t fw = 0; fw < FW; fw++) {
-        for (uint64_t ci = 0; ci < CIG; ci++) {
+  for (uint64_t co = 0; co < COG; co++)
+  {
+    for (uint64_t fh = 0; fh < FH; fh++)
+    {
+      for (uint64_t fw = 0; fw < FW; fw++)
+      {
+        for (uint64_t ci = 0; ci < CIG; ci++)
+        {
           int64_t linIdx = ((((fh * FW) * CIG) + (fw * CIG)) + ci);
           Arr2DIdxRowM(outputArr, (CO / G), ((FH * FW) * (CI / G)), co,
                        linIdx) = Arr4DIdxRowM(inputArr, FH, FW, (CI / G), CO,
@@ -213,14 +263,19 @@ void Conv2DReshapeFilterGroup(int64_t FH, int64_t FW, int64_t CI, int64_t CO,
 
 void Conv2DReshapeMatMulOPGroup(int64_t N, int64_t finalH, int64_t finalW,
                                 int64_t CO, int64_t g, int64_t G,
-                                uint64_t *inputArr, uint64_t *outputArr) {
+                                uint64_t *inputArr, uint64_t *outputArr)
+{
   int64_t COG = (CO / G);
 
   int64_t startCO = (g * COG);
-  for (uint64_t co = 0; co < COG; co++) {
-    for (uint64_t n = 0; n < N; n++) {
-      for (uint64_t h = 0; h < finalH; h++) {
-        for (uint64_t w = 0; w < finalW; w++) {
+  for (uint64_t co = 0; co < COG; co++)
+  {
+    for (uint64_t n = 0; n < N; n++)
+    {
+      for (uint64_t h = 0; h < finalH; h++)
+      {
+        for (uint64_t w = 0; w < finalW; w++)
+        {
           Arr4DIdxRowM(outputArr, N, finalH, finalW, CO, n, h, w,
                        (co + startCO)) =
               Arr2DIdxRowM(inputArr, (CO / G), ((N * finalH) * finalW), co,
@@ -237,21 +292,27 @@ void Conv2DReshapeInputGroup(int64_t N, int64_t H, int64_t W, int64_t CI,
                              int64_t zPadWRight, int64_t strideH,
                              int64_t strideW, int64_t g, int64_t G,
                              int64_t RRows, int64_t RCols, uint64_t *inputArr,
-                             uint64_t *outputArr) {
+                             uint64_t *outputArr)
+{
   int64_t linIdxFilterMult = 0;
 
   int64_t CIG = (CI / G);
-  for (uint64_t n = 0; n < N; n++) {
+  for (uint64_t n = 0; n < N; n++)
+  {
     int64_t leftTopCornerH = (0 - zPadHLeft);
 
     int64_t extremeRightBottomCornerH = ((H - 1) + zPadHRight);
-    while ((((leftTopCornerH + FH) - 1) <= extremeRightBottomCornerH)) {
+    while ((((leftTopCornerH + FH) - 1) <= extremeRightBottomCornerH))
+    {
       int64_t leftTopCornerW = (0 - zPadWLeft);
 
       int64_t extremeRightBottomCornerW = ((W - 1) + zPadWRight);
-      while ((((leftTopCornerW + FW) - 1) <= extremeRightBottomCornerW)) {
-        for (uint64_t fh = 0; fh < FH; fh++) {
-          for (uint64_t fw = 0; fw < FW; fw++) {
+      while ((((leftTopCornerW + FW) - 1) <= extremeRightBottomCornerW))
+      {
+        for (uint64_t fh = 0; fh < FH; fh++)
+        {
+          for (uint64_t fw = 0; fw < FW; fw++)
+          {
             int64_t curPosH = (leftTopCornerH + fh);
 
             int64_t curPosW = (leftTopCornerW + fw);
@@ -259,11 +320,15 @@ void Conv2DReshapeInputGroup(int64_t N, int64_t H, int64_t W, int64_t CI,
             uint64_t val = funcSSCons((int64_t)0);
 
             int64_t startCI = (g * CIG);
-            for (uint64_t ci = 0; ci < CIG; ci++) {
+            for (uint64_t ci = 0; ci < CIG; ci++)
+            {
               if ((((curPosH < 0) || (curPosH >= H)) ||
-                   ((curPosW < 0) || (curPosW >= W)))) {
+                   ((curPosW < 0) || (curPosW >= W))))
+              {
                 val = funcSSCons((int64_t)0);
-              } else {
+              }
+              else
+              {
                 val = Arr4DIdxRowM(inputArr, N, H, W, CI, n, curPosH, curPosW,
                                    (ci + startCI));
               }
@@ -286,7 +351,8 @@ void Conv2DGroup(int64_t N, int64_t H, int64_t W, int64_t CI, int64_t FH,
                  int64_t FW, int64_t CO, int64_t zPadHLeft, int64_t zPadHRight,
                  int64_t zPadWLeft, int64_t zPadWRight, int64_t strideH,
                  int64_t strideW, int64_t G, uint64_t *inputArr,
-                 uint64_t *filterArr, uint64_t *outArr) {
+                 uint64_t *filterArr, uint64_t *outArr)
+{
   int64_t CIG = (CI / G);
 
   int64_t reshapedFilterRows = (CO / G);
@@ -300,7 +366,8 @@ void Conv2DGroup(int64_t N, int64_t H, int64_t W, int64_t CI, int64_t FH,
   int64_t outW = ((((W + (zPadWLeft + zPadWRight)) - FW) / strideW) + 1);
 
   int64_t reshapedIPCols = ((N * outH) * outW);
-  for (uint64_t g = 0; g < G; g++) {
+  for (uint64_t g = 0; g < G; g++)
+  {
     uint64_t *inputReshaped =
         make_array<uint64_t>(reshapedIPRows, reshapedIPCols);
 
@@ -324,12 +391,18 @@ void Conv2DGroup(int64_t N, int64_t H, int64_t W, int64_t CI, int64_t FH,
 }
 
 void Conv3DReshapeFilter(int64_t FD, int64_t FH, int64_t FW, int64_t CI,
-                         int64_t CO, uint64_t *inputArr, uint64_t *outputArr) {
-  for (uint64_t co = 0; co < CO; co++) {
-    for (uint64_t fd = 0; fd < FD; fd++) {
-      for (uint64_t fh = 0; fh < FH; fh++) {
-        for (uint64_t fw = 0; fw < FW; fw++) {
-          for (uint64_t ci = 0; ci < CI; ci++) {
+                         int64_t CO, uint64_t *inputArr, uint64_t *outputArr)
+{
+  for (uint64_t co = 0; co < CO; co++)
+  {
+    for (uint64_t fd = 0; fd < FD; fd++)
+    {
+      for (uint64_t fh = 0; fh < FH; fh++)
+      {
+        for (uint64_t fw = 0; fw < FW; fw++)
+        {
+          for (uint64_t ci = 0; ci < CI; ci++)
+          {
             int64_t linIdx =
                 ((((((fd * FH) * FW) * CI) + ((fh * FW) * CI)) + (fw * CI)) +
                  ci);
@@ -344,12 +417,18 @@ void Conv3DReshapeFilter(int64_t FD, int64_t FH, int64_t FW, int64_t CI,
 
 void Conv3DReshapeMatMulOP(int64_t N, int64_t finalD, int64_t finalH,
                            int64_t finalW, int64_t CO, uint64_t *inputArr,
-                           uint64_t *outputArr) {
-  for (uint64_t co = 0; co < CO; co++) {
-    for (uint64_t n = 0; n < N; n++) {
-      for (uint64_t d = 0; d < finalD; d++) {
-        for (uint64_t h = 0; h < finalH; h++) {
-          for (uint64_t w = 0; w < finalW; w++) {
+                           uint64_t *outputArr)
+{
+  for (uint64_t co = 0; co < CO; co++)
+  {
+    for (uint64_t n = 0; n < N; n++)
+    {
+      for (uint64_t d = 0; d < finalD; d++)
+      {
+        for (uint64_t h = 0; h < finalH; h++)
+        {
+          for (uint64_t w = 0; w < finalW; w++)
+          {
             Arr5DIdxRowM(outputArr, N, finalD, finalH, finalW, CO, n, d, h, w,
                          co) =
                 Arr2DIdxRowM(inputArr, CO, (((N * finalD) * finalH) * finalW),
@@ -371,24 +450,32 @@ void Conv3DReshapeInput(int64_t N, int64_t D, int64_t H, int64_t W, int64_t CI,
                         int64_t zPadHRight, int64_t zPadWLeft,
                         int64_t zPadWRight, int64_t strideD, int64_t strideH,
                         int64_t strideW, int64_t RRows, int64_t RCols,
-                        uint64_t *inputArr, uint64_t *outputArr) {
+                        uint64_t *inputArr, uint64_t *outputArr)
+{
   int64_t linIdxFilterMult = 0;
-  for (uint64_t n = 0; n < N; n++) {
+  for (uint64_t n = 0; n < N; n++)
+  {
     int64_t leftTopCornerD = (0 - zPadDLeft);
 
     int64_t extremeRightBottomCornerD = ((D - 1) + zPadDRight);
-    while ((((leftTopCornerD + FD) - 1) <= extremeRightBottomCornerD)) {
+    while ((((leftTopCornerD + FD) - 1) <= extremeRightBottomCornerD))
+    {
       int64_t leftTopCornerH = (0 - zPadHLeft);
 
       int64_t extremeRightBottomCornerH = ((H - 1) + zPadHRight);
-      while ((((leftTopCornerH + FH) - 1) <= extremeRightBottomCornerH)) {
+      while ((((leftTopCornerH + FH) - 1) <= extremeRightBottomCornerH))
+      {
         int64_t leftTopCornerW = (0 - zPadWLeft);
 
         int64_t extremeRightBottomCornerW = ((W - 1) + zPadWRight);
-        while ((((leftTopCornerW + FW) - 1) <= extremeRightBottomCornerW)) {
-          for (uint64_t fd = 0; fd < FD; fd++) {
-            for (uint64_t fh = 0; fh < FH; fh++) {
-              for (uint64_t fw = 0; fw < FW; fw++) {
+        while ((((leftTopCornerW + FW) - 1) <= extremeRightBottomCornerW))
+        {
+          for (uint64_t fd = 0; fd < FD; fd++)
+          {
+            for (uint64_t fh = 0; fh < FH; fh++)
+            {
+              for (uint64_t fw = 0; fw < FW; fw++)
+              {
                 int64_t curPosD = (leftTopCornerD + fd);
 
                 int64_t curPosH = (leftTopCornerH + fh);
@@ -396,12 +483,16 @@ void Conv3DReshapeInput(int64_t N, int64_t D, int64_t H, int64_t W, int64_t CI,
                 int64_t curPosW = (leftTopCornerW + fw);
 
                 uint64_t val = funcSSCons((int64_t)0);
-                for (uint64_t ci = 0; ci < CI; ci++) {
+                for (uint64_t ci = 0; ci < CI; ci++)
+                {
                   if (((((curPosD < 0) || (curPosD >= D)) ||
                         ((curPosH < 0) || (curPosH >= H))) ||
-                       ((curPosW < 0) || (curPosW >= W)))) {
+                       ((curPosW < 0) || (curPosW >= W))))
+                  {
                     val = funcSSCons((int64_t)0);
-                  } else {
+                  }
+                  else
+                  {
                     val = Arr5DIdxRowM(inputArr, N, D, H, W, CI, n, curPosD,
                                        curPosH, curPosW, ci);
                   }
@@ -431,7 +522,8 @@ void Conv3D(int64_t N, int64_t D, int64_t H, int64_t W, int64_t CI, int64_t FD,
             int64_t zPadDRight, int64_t zPadHLeft, int64_t zPadHRight,
             int64_t zPadWLeft, int64_t zPadWRight, int64_t strideD,
             int64_t strideH, int64_t strideW, uint64_t *inputArr,
-            uint64_t *filterArr, uint64_t *outArr) {
+            uint64_t *filterArr, uint64_t *outArr)
+{
   int64_t reshapedFilterRows = CO;
 
   int64_t reshapedFilterCols = (((FD * FH) * FW) * CI);
@@ -473,20 +565,30 @@ void Conv3DLoopInner(int64_t N, int64_t D, int64_t H, int64_t W, int64_t CI,
                      int64_t strideD, int64_t strideH, int64_t strideW,
                      int64_t outD, int64_t outH, int64_t outW,
                      uint64_t *inputArr, uint64_t *filterArr,
-                     uint64_t *outArr) {
-  for (uint64_t n = 0; n < N; n++) {
-    for (uint64_t co = 0; co < CO; co++) {
-      for (uint64_t d = 0; d < outD; d++) {
-        for (uint64_t h = 0; h < outH; h++) {
-          for (uint64_t w = 0; w < outW; w++) {
-            for (uint64_t ci = 0; ci < CI; ci++) {
+                     uint64_t *outArr)
+{
+  for (uint64_t n = 0; n < N; n++)
+  {
+    for (uint64_t co = 0; co < CO; co++)
+    {
+      for (uint64_t d = 0; d < outD; d++)
+      {
+        for (uint64_t h = 0; h < outH; h++)
+        {
+          for (uint64_t w = 0; w < outW; w++)
+          {
+            for (uint64_t ci = 0; ci < CI; ci++)
+            {
               uint64_t val = funcSSCons((int64_t)0);
               for (uint64_t fd = (d * strideD); fd < ((d * strideD) + FD);
-                   fd++) {
+                   fd++)
+              {
                 for (uint64_t fh = (h * strideH); fh < ((h * strideH) + FH);
-                     fh++) {
+                     fh++)
+                {
                   for (uint64_t fw = (w * strideW); fw < ((w * strideW) + FW);
-                       fw++) {
+                       fw++)
+                  {
                     int64_t curPosD = (fd - zPadDLeft);
 
                     int64_t curPosH = (fh - zPadHLeft);
@@ -496,7 +598,8 @@ void Conv3DLoopInner(int64_t N, int64_t D, int64_t H, int64_t W, int64_t CI,
                             (curPosW >= 0)) &&
                            (curPosD < D)) &&
                           (curPosH < H)) &&
-                         (curPosW < W))) {
+                         (curPosW < W)))
+                    {
                       int64_t curFilterPosD = (fd - (d * strideD));
 
                       int64_t curFilterPosH = (fh - (h * strideH));
@@ -530,7 +633,8 @@ void Conv3DLoop(int64_t N, int64_t D, int64_t H, int64_t W, int64_t CI,
                 int64_t zPadDLeft, int64_t zPadDRight, int64_t zPadHLeft,
                 int64_t zPadHRight, int64_t zPadWLeft, int64_t zPadWRight,
                 int64_t strideD, int64_t strideH, int64_t strideW,
-                uint64_t *inputArr, uint64_t *filterArr, uint64_t *outArr) {
+                uint64_t *inputArr, uint64_t *filterArr, uint64_t *outArr)
+{
   int64_t outD = ((((D - FD) + (zPadDLeft + zPadDRight)) / strideD) + 1);
 
   int64_t outH = ((((H - FH) + (zPadHLeft + zPadHRight)) / strideH) + 1);
@@ -544,11 +648,16 @@ void Conv3DLoop(int64_t N, int64_t D, int64_t H, int64_t W, int64_t CI,
 
 void ConvTranspose2DReshapeMatMulOP(int64_t N, int64_t finalH, int64_t finalW,
                                     int64_t CO, uint64_t *inputArr,
-                                    uint64_t *outputArr) {
-  for (uint64_t co = 0; co < CO; co++) {
-    for (uint64_t n = 0; n < N; n++) {
-      for (uint64_t h = 0; h < finalH; h++) {
-        for (uint64_t w = 0; w < finalW; w++) {
+                                    uint64_t *outputArr)
+{
+  for (uint64_t co = 0; co < CO; co++)
+  {
+    for (uint64_t n = 0; n < N; n++)
+    {
+      for (uint64_t h = 0; h < finalH; h++)
+      {
+        for (uint64_t w = 0; w < finalW; w++)
+        {
           Arr4DIdxRowM(outputArr, N, finalH, finalW, CO, n, h, w, co) =
               Arr2DIdxRowM(inputArr, CO, ((N * finalH) * finalW), co,
                            ((((n * finalH) * finalW) + (h * finalW)) + w));
@@ -560,11 +669,16 @@ void ConvTranspose2DReshapeMatMulOP(int64_t N, int64_t finalH, int64_t finalW,
 
 void ConvTranspose2DReshapeFilter(int64_t FH, int64_t FW, int64_t CO,
                                   int64_t CI, uint64_t *inputArr,
-                                  uint64_t *outputArr) {
-  for (uint64_t co = 0; co < CO; co++) {
-    for (uint64_t fh = 0; fh < FH; fh++) {
-      for (uint64_t fw = 0; fw < FW; fw++) {
-        for (uint64_t ci = 0; ci < CI; ci++) {
+                                  uint64_t *outputArr)
+{
+  for (uint64_t co = 0; co < CO; co++)
+  {
+    for (uint64_t fh = 0; fh < FH; fh++)
+    {
+      for (uint64_t fw = 0; fw < FW; fw++)
+      {
+        for (uint64_t ci = 0; ci < CI; ci++)
+        {
           int64_t linIdx = ((((fh * FW) * CI) + (fw * CI)) + ci);
           Arr2DIdxRowM(outputArr, CO, ((FH * FW) * CI), co, linIdx) =
               Arr4DIdxRowM(inputArr, FH, FW, CO, CI, ((FH - 1) - fh),
@@ -581,41 +695,54 @@ void ConvTranspose2DReshapeInput(int64_t N, int64_t HPrime, int64_t WPrime,
                                  int64_t zPadTrWLeft, int64_t zPadTrWRight,
                                  int64_t strideH, int64_t strideW,
                                  int64_t RRows, int64_t RCols,
-                                 uint64_t *inputArr, uint64_t *outputArr) {
+                                 uint64_t *inputArr, uint64_t *outputArr)
+{
   int64_t linIdxFilterMult = 0;
-  for (uint64_t n = 0; n < N; n++) {
+  for (uint64_t n = 0; n < N; n++)
+  {
     int64_t leftTopCornerH = (0 - zPadTrHLeft);
 
     int64_t HPrimeTilde = (HPrime + ((HPrime - 1) * (strideH - 1)));
 
     int64_t extremeRightBottomCornerH = ((HPrimeTilde - 1) + zPadTrHRight);
-    while ((((leftTopCornerH + FH) - 1) <= extremeRightBottomCornerH)) {
+    while ((((leftTopCornerH + FH) - 1) <= extremeRightBottomCornerH))
+    {
       int64_t leftTopCornerW = (0 - zPadTrWLeft);
 
       int64_t WPrimeTilde = (WPrime + ((WPrime - 1) * (strideW - 1)));
 
       int64_t extremeRightBottomCornerW = ((WPrimeTilde - 1) + zPadTrWRight);
-      while ((((leftTopCornerW + FW) - 1) <= extremeRightBottomCornerW)) {
-        for (uint64_t fh = 0; fh < FH; fh++) {
-          for (uint64_t fw = 0; fw < FW; fw++) {
+      while ((((leftTopCornerW + FW) - 1) <= extremeRightBottomCornerW))
+      {
+        for (uint64_t fh = 0; fh < FH; fh++)
+        {
+          for (uint64_t fw = 0; fw < FW; fw++)
+          {
             int64_t curPosH = (leftTopCornerH + fh);
 
             int64_t curPosW = (leftTopCornerW + fw);
 
             uint64_t val = funcSSCons((int64_t)0);
-            for (uint64_t ci = 0; ci < CI; ci++) {
+            for (uint64_t ci = 0; ci < CI; ci++)
+            {
               if ((((curPosH < 0) || (curPosH >= HPrimeTilde)) ||
-                   ((curPosW < 0) || (curPosW >= WPrimeTilde)))) {
+                   ((curPosW < 0) || (curPosW >= WPrimeTilde))))
+              {
                 val = funcSSCons((int64_t)0);
-              } else {
+              }
+              else
+              {
                 if ((((curPosH % strideH) == 0) &&
-                     ((curPosW % strideW) == 0))) {
+                     ((curPosW % strideW) == 0)))
+                {
                   int64_t idxInputH = (curPosH / strideH);
 
                   int64_t idxInputW = (curPosW / strideW);
                   val = Arr4DIdxRowM(inputArr, N, HPrime, WPrime, CI, n,
                                      idxInputH, idxInputW, ci);
-                } else {
+                }
+                else
+                {
                   val = funcSSCons((int64_t)0);
                 }
               }
@@ -639,7 +766,8 @@ void ConvTranspose2D(int64_t N, int64_t HPrime, int64_t WPrime, int64_t CI,
                      int64_t zPadTrHLeft, int64_t zPadTrHRight,
                      int64_t zPadTrWLeft, int64_t zPadTrWRight, int64_t strideH,
                      int64_t strideW, uint64_t *inputArr, uint64_t *filterArr,
-                     uint64_t *outArr) {
+                     uint64_t *outArr)
+{
   int64_t reshapedFilterRows = CO;
 
   int64_t reshapedFilterCols = ((FH * FW) * CI);
@@ -670,12 +798,18 @@ void ConvTranspose2D(int64_t N, int64_t HPrime, int64_t WPrime, int64_t CI,
 
 void ConvTranspose3DReshapeFilter(int64_t FD, int64_t FH, int64_t FW,
                                   int64_t CO, int64_t CI, uint64_t *inputArr,
-                                  uint64_t *outputArr) {
-  for (uint64_t co = 0; co < CO; co++) {
-    for (uint64_t fd = 0; fd < FD; fd++) {
-      for (uint64_t fh = 0; fh < FH; fh++) {
-        for (uint64_t fw = 0; fw < FW; fw++) {
-          for (uint64_t ci = 0; ci < CI; ci++) {
+                                  uint64_t *outputArr)
+{
+  for (uint64_t co = 0; co < CO; co++)
+  {
+    for (uint64_t fd = 0; fd < FD; fd++)
+    {
+      for (uint64_t fh = 0; fh < FH; fh++)
+      {
+        for (uint64_t fw = 0; fw < FW; fw++)
+        {
+          for (uint64_t ci = 0; ci < CI; ci++)
+          {
             int64_t linIdx =
                 ((((((fd * FH) * FW) * CI) + ((fh * FW) * CI)) + (fw * CI)) +
                  ci);
@@ -697,30 +831,38 @@ void ConvTranspose3DReshapeInput(int64_t N, int64_t DPrime, int64_t HPrime,
                                  int64_t zPadTrWRight, int64_t strideD,
                                  int64_t strideH, int64_t strideW,
                                  int64_t RRows, int64_t RCols,
-                                 uint64_t *inputArr, uint64_t *outputArr) {
+                                 uint64_t *inputArr, uint64_t *outputArr)
+{
   int64_t linIdxFilterMult = 0;
-  for (uint64_t n = 0; n < N; n++) {
+  for (uint64_t n = 0; n < N; n++)
+  {
     int64_t leftTopCornerD = (0 - zPadTrDLeft);
 
     int64_t DPrimeTilde = (DPrime + ((DPrime - 1) * (strideD - 1)));
 
     int64_t extremeRightBottomCornerD = ((DPrimeTilde - 1) + zPadTrDRight);
-    while ((((leftTopCornerD + FD) - 1) <= extremeRightBottomCornerD)) {
+    while ((((leftTopCornerD + FD) - 1) <= extremeRightBottomCornerD))
+    {
       int64_t leftTopCornerH = (0 - zPadTrHLeft);
 
       int64_t HPrimeTilde = (HPrime + ((HPrime - 1) * (strideH - 1)));
 
       int64_t extremeRightBottomCornerH = ((HPrimeTilde - 1) + zPadTrHRight);
-      while ((((leftTopCornerH + FH) - 1) <= extremeRightBottomCornerH)) {
+      while ((((leftTopCornerH + FH) - 1) <= extremeRightBottomCornerH))
+      {
         int64_t leftTopCornerW = (0 - zPadTrWLeft);
 
         int64_t WPrimeTilde = (WPrime + ((WPrime - 1) * (strideW - 1)));
 
         int64_t extremeRightBottomCornerW = ((WPrimeTilde - 1) + zPadTrWRight);
-        while ((((leftTopCornerW + FW) - 1) <= extremeRightBottomCornerW)) {
-          for (uint64_t fd = 0; fd < FD; fd++) {
-            for (uint64_t fh = 0; fh < FH; fh++) {
-              for (uint64_t fw = 0; fw < FW; fw++) {
+        while ((((leftTopCornerW + FW) - 1) <= extremeRightBottomCornerW))
+        {
+          for (uint64_t fd = 0; fd < FD; fd++)
+          {
+            for (uint64_t fh = 0; fh < FH; fh++)
+            {
+              for (uint64_t fw = 0; fw < FW; fw++)
+              {
                 int64_t curPosD = (leftTopCornerD + fd);
 
                 int64_t curPosH = (leftTopCornerH + fh);
@@ -728,15 +870,20 @@ void ConvTranspose3DReshapeInput(int64_t N, int64_t DPrime, int64_t HPrime,
                 int64_t curPosW = (leftTopCornerW + fw);
 
                 uint64_t val = funcSSCons((int64_t)0);
-                for (uint64_t ci = 0; ci < CI; ci++) {
+                for (uint64_t ci = 0; ci < CI; ci++)
+                {
                   if (((((curPosD < 0) || (curPosD >= DPrimeTilde)) ||
                         ((curPosH < 0) || (curPosH >= HPrimeTilde))) ||
-                       ((curPosW < 0) || (curPosW >= WPrimeTilde)))) {
+                       ((curPosW < 0) || (curPosW >= WPrimeTilde))))
+                  {
                     val = funcSSCons((int64_t)0);
-                  } else {
+                  }
+                  else
+                  {
                     if (((((curPosD % strideD) == 0) &&
                           ((curPosH % strideH) == 0)) &&
-                         ((curPosW % strideW) == 0))) {
+                         ((curPosW % strideW) == 0)))
+                    {
                       int64_t idxInputD = (curPosD / strideD);
 
                       int64_t idxInputH = (curPosH / strideH);
@@ -745,7 +892,9 @@ void ConvTranspose3DReshapeInput(int64_t N, int64_t DPrime, int64_t HPrime,
                       val =
                           Arr5DIdxRowM(inputArr, N, DPrime, HPrime, WPrime, CI,
                                        n, idxInputD, idxInputH, idxInputW, ci);
-                    } else {
+                    }
+                    else
+                    {
                       val = funcSSCons((int64_t)0);
                     }
                   }
@@ -777,7 +926,8 @@ void ConvTranspose3D(int64_t N, int64_t DPrime, int64_t HPrime, int64_t WPrime,
                      int64_t zPadTrHRight, int64_t zPadTrWLeft,
                      int64_t zPadTrWRight, int64_t strideD, int64_t strideH,
                      int64_t strideW, uint64_t *inputArr, uint64_t *filterArr,
-                     uint64_t *outArr) {
+                     uint64_t *outArr)
+{
   int64_t reshapedFilterRows = CO;
 
   int64_t reshapedFilterCols = (((FD * FH) * FW) * CI);
@@ -814,17 +964,27 @@ void ConvTranspose3DLoopInner(int64_t N, int64_t D, int64_t H, int64_t W,
                               int64_t strideD, int64_t strideH, int64_t strideW,
                               int64_t outD, int64_t outH, int64_t outW,
                               uint64_t *inputArr, uint64_t *filterArr,
-                              uint64_t *outArr) {
-  for (uint64_t n = 0; n < N; n++) {
-    for (uint64_t co = 0; co < CO; co++) {
-      for (uint64_t d = 0; d < outD; d++) {
-        for (uint64_t h = 0; h < outH; h++) {
-          for (uint64_t w = 0; w < outW; w++) {
-            for (uint64_t ci = 0; ci < CI; ci++) {
+                              uint64_t *outArr)
+{
+  for (uint64_t n = 0; n < N; n++)
+  {
+    for (uint64_t co = 0; co < CO; co++)
+    {
+      for (uint64_t d = 0; d < outD; d++)
+      {
+        for (uint64_t h = 0; h < outH; h++)
+        {
+          for (uint64_t w = 0; w < outW; w++)
+          {
+            for (uint64_t ci = 0; ci < CI; ci++)
+            {
               uint64_t val = funcSSCons((int64_t)0);
-              for (uint64_t fd = d; fd < (d + FD); fd++) {
-                for (uint64_t fh = h; fh < (h + FH); fh++) {
-                  for (uint64_t fw = w; fw < (w + FW); fw++) {
+              for (uint64_t fd = d; fd < (d + FD); fd++)
+              {
+                for (uint64_t fh = h; fh < (h + FH); fh++)
+                {
+                  for (uint64_t fw = w; fw < (w + FW); fw++)
+                  {
                     int64_t curPosD = ((fd - zPadDLeft) / strideD);
 
                     int64_t curPosH = ((fh - zPadHLeft) / strideD);
@@ -837,7 +997,8 @@ void ConvTranspose3DLoopInner(int64_t N, int64_t D, int64_t H, int64_t W,
                             (curPosW < W)) &&
                            (((fd - zPadDLeft) % strideD) == 0)) &&
                           (((fh - zPadHLeft) % strideH) == 0)) &&
-                         (((fw - zPadWLeft) % strideW) == 0))) {
+                         (((fw - zPadWLeft) % strideW) == 0)))
+                    {
                       int64_t curFilterPosD = (((FD + d) - fd) - 1);
 
                       int64_t curFilterPosH = (((FH + h) - fh) - 1);
@@ -874,16 +1035,20 @@ void ConvTranspose3DLoop(int64_t N, int64_t DPrime, int64_t HPrime,
                          int64_t zPadTrWLeft, int64_t zPadTrWRight,
                          int64_t strideD, int64_t strideH, int64_t strideW,
                          uint64_t *inputArr, uint64_t *filterArr,
-                         uint64_t *outArr) {
+                         uint64_t *outArr)
+{
   ConvTranspose3DLoopInner(N, DPrime, HPrime, WPrime, CI, FD, FH, FW, CO,
                            zPadTrDLeft, zPadTrDRight, zPadTrHLeft, zPadTrHRight,
                            zPadTrWLeft, zPadTrWRight, strideD, strideH, strideW,
                            D, H, W, inputArr, filterArr, outArr);
 }
 
-void Transpose2(int64_t s1, int64_t s2, uint64_t *inArr, uint64_t *outArr) {
-  for (uint64_t i = 0; i < s1; i++) {
-    for (uint64_t j = 0; j < s2; j++) {
+void Transpose2(int64_t s1, int64_t s2, uint64_t *inArr, uint64_t *outArr)
+{
+  for (uint64_t i = 0; i < s1; i++)
+  {
+    for (uint64_t j = 0; j < s2; j++)
+    {
       Arr2DIdxRowM(outArr, s1, s2, i, j) = Arr2DIdxRowM(inArr, s2, s1, j, i);
     }
   }
@@ -891,7 +1056,8 @@ void Transpose2(int64_t s1, int64_t s2, uint64_t *inArr, uint64_t *outArr) {
 
 void Pad442(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t inps1,
             int64_t inps2, int64_t inps3, int64_t inps4, uint64_t *inpArr,
-            int64_t pads1, int64_t pads2, int64_t *paddings, uint64_t *outArr) {
+            int64_t pads1, int64_t pads2, int64_t *paddings, uint64_t *outArr)
+{
   int64_t lbounds1 = Arr2DIdxRowM(paddings, pads1, pads2, 0, 0);
 
   int64_t rbounds1excl = (s1 - Arr2DIdxRowM(paddings, pads1, pads2, 0, 1));
@@ -907,24 +1073,31 @@ void Pad442(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t inps1,
   int64_t lbounds4 = Arr2DIdxRowM(paddings, pads1, pads2, 3, 0);
 
   int64_t rbounds4excl = (s4 - Arr2DIdxRowM(paddings, pads1, pads2, 3, 1));
-  for (uint64_t i = 0; i < s1; i++) {
-    for (uint64_t j = 0; j < s2; j++) {
-      for (uint64_t k = 0; k < s3; k++) {
-        for (uint64_t l = 0; l < s4; l++) {
+  for (uint64_t i = 0; i < s1; i++)
+  {
+    for (uint64_t j = 0; j < s2; j++)
+    {
+      for (uint64_t k = 0; k < s3; k++)
+      {
+        for (uint64_t l = 0; l < s4; l++)
+        {
           if (((((((((i >= lbounds1) && (i < rbounds1excl)) &&
                     (j >= lbounds2)) &&
                    (j < rbounds2excl)) &&
                   (k >= lbounds3)) &&
                  (k < rbounds3excl)) &&
                 (l >= lbounds4)) &&
-               (l < rbounds4excl))) {
+               (l < rbounds4excl)))
+          {
             Arr4DIdxRowM(outArr, s1, s2, s3, s4, i, j, k, l) =
                 Arr4DIdxRowM(inpArr, inps1, inps2, inps3, inps4,
                              (i - Arr2DIdxRowM(paddings, pads1, pads2, 0, 0)),
                              (j - Arr2DIdxRowM(paddings, pads1, pads2, 1, 0)),
                              (k - Arr2DIdxRowM(paddings, pads1, pads2, 2, 0)),
                              (l - Arr2DIdxRowM(paddings, pads1, pads2, 3, 0)));
-          } else {
+          }
+          else
+          {
             Arr4DIdxRowM(outArr, s1, s2, s3, s4, i, j, k, l) =
                 funcSSCons((int64_t)0);
           }
@@ -937,7 +1110,8 @@ void Pad442(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t inps1,
 void Pad552(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t s5,
             int64_t inps1, int64_t inps2, int64_t inps3, int64_t inps4,
             int64_t inps5, uint64_t *inpArr, int64_t pads1, int64_t pads2,
-            int64_t *paddings, uint64_t *outArr) {
+            int64_t *paddings, uint64_t *outArr)
+{
   int64_t lbounds1 = Arr2DIdxRowM(paddings, pads1, pads2, 0, 0);
 
   int64_t rbounds1excl = (s1 - Arr2DIdxRowM(paddings, pads1, pads2, 0, 1));
@@ -957,11 +1131,16 @@ void Pad552(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t s5,
   int64_t lbounds5 = Arr2DIdxRowM(paddings, pads1, pads2, 4, 0);
 
   int64_t rbounds5excl = (s5 - Arr2DIdxRowM(paddings, pads1, pads2, 4, 1));
-  for (uint64_t i = 0; i < s1; i++) {
-    for (uint64_t j = 0; j < s2; j++) {
-      for (uint64_t k = 0; k < s3; k++) {
-        for (uint64_t l = 0; l < s4; l++) {
-          for (uint64_t m = 0; m < s5; m++) {
+  for (uint64_t i = 0; i < s1; i++)
+  {
+    for (uint64_t j = 0; j < s2; j++)
+    {
+      for (uint64_t k = 0; k < s3; k++)
+      {
+        for (uint64_t l = 0; l < s4; l++)
+        {
+          for (uint64_t m = 0; m < s5; m++)
+          {
             if (((((((((((i >= lbounds1) && (i < rbounds1excl)) &&
                         (j >= lbounds2)) &&
                        (j < rbounds2excl)) &&
@@ -970,7 +1149,8 @@ void Pad552(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t s5,
                     (l >= lbounds4)) &&
                    (l < rbounds4excl)) &&
                   (m >= lbounds5)) &&
-                 (m < rbounds5excl))) {
+                 (m < rbounds5excl)))
+            {
               Arr5DIdxRowM(outArr, s1, s2, s3, s4, s5, i, j, k, l, m) =
                   Arr5DIdxRowM(
                       inpArr, inps1, inps2, inps3, inps4, inps5,
@@ -979,7 +1159,9 @@ void Pad552(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t s5,
                       (k - Arr2DIdxRowM(paddings, pads1, pads2, 2, 0)),
                       (l - Arr2DIdxRowM(paddings, pads1, pads2, 3, 0)),
                       (m - Arr2DIdxRowM(paddings, pads1, pads2, 4, 0)));
-            } else {
+            }
+            else
+            {
               Arr5DIdxRowM(outArr, s1, s2, s3, s4, s5, i, j, k, l, m) =
                   funcSSCons((int64_t)0);
             }
@@ -992,7 +1174,8 @@ void Pad552(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t s5,
 
 void PadONNX441(int64_t o1, int64_t o2, int64_t o3, int64_t o4, int64_t i1,
                 int64_t i2, int64_t i3, int64_t i4, uint64_t *inpArr,
-                int64_t pads, int64_t *paddings, uint64_t *outArr) {
+                int64_t pads, int64_t *paddings, uint64_t *outArr)
+{
   int64_t lbounds1 = Arr1DIdxRowM(paddings, pads, 0);
 
   int64_t rbounds1excl = (o1 - Arr1DIdxRowM(paddings, pads, 4));
@@ -1008,23 +1191,30 @@ void PadONNX441(int64_t o1, int64_t o2, int64_t o3, int64_t o4, int64_t i1,
   int64_t lbounds4 = Arr1DIdxRowM(paddings, pads, 3);
 
   int64_t rbounds4excl = (o4 - Arr1DIdxRowM(paddings, pads, 7));
-  for (uint64_t i = 0; i < o1; i++) {
-    for (uint64_t j = 0; j < o2; j++) {
-      for (uint64_t k = 0; k < o3; k++) {
-        for (uint64_t l = 0; l < o4; l++) {
+  for (uint64_t i = 0; i < o1; i++)
+  {
+    for (uint64_t j = 0; j < o2; j++)
+    {
+      for (uint64_t k = 0; k < o3; k++)
+      {
+        for (uint64_t l = 0; l < o4; l++)
+        {
           if (((((((((i >= lbounds1) && (i < rbounds1excl)) &&
                     (j >= lbounds2)) &&
                    (j < rbounds2excl)) &&
                   (k >= lbounds3)) &&
                  (k < rbounds3excl)) &&
                 (l >= lbounds4)) &&
-               (l < rbounds4excl))) {
+               (l < rbounds4excl)))
+          {
             Arr4DIdxRowM(outArr, o1, o2, o3, o4, i, j, k, l) = Arr4DIdxRowM(
                 inpArr, i1, i2, i3, i4, (i - Arr1DIdxRowM(paddings, pads, 0)),
                 (j - Arr1DIdxRowM(paddings, pads, 1)),
                 (k - Arr1DIdxRowM(paddings, pads, 2)),
                 (l - Arr1DIdxRowM(paddings, pads, 3)));
-          } else {
+          }
+          else
+          {
             Arr4DIdxRowM(outArr, o1, o2, o3, o4, i, j, k, l) =
                 funcSSCons((int64_t)0);
           }
@@ -1036,11 +1226,16 @@ void PadONNX441(int64_t o1, int64_t o2, int64_t o3, int64_t o4, int64_t i1,
 
 void Squeeze24(int64_t s1, int64_t s2, int64_t dim1, int64_t dim2, int64_t ins1,
                int64_t ins2, int64_t ins3, int64_t ins4, uint64_t *inArr,
-               uint64_t *outArr) {
-  for (uint64_t i = 0; i < ins1; i++) {
-    for (uint64_t j = 0; j < ins2; j++) {
-      for (uint64_t k = 0; k < ins3; k++) {
-        for (uint64_t l = 0; l < ins4; l++) {
+               uint64_t *outArr)
+{
+  for (uint64_t i = 0; i < ins1; i++)
+  {
+    for (uint64_t j = 0; j < ins2; j++)
+    {
+      for (uint64_t k = 0; k < ins3; k++)
+      {
+        for (uint64_t l = 0; l < ins4; l++)
+        {
           int64_t linIdx =
               ((((((i * ins2) * ins3) * ins4) + ((j * ins3) * ins4)) +
                 (k * ins4)) +
@@ -1060,20 +1255,29 @@ void Squeeze24(int64_t s1, int64_t s2, int64_t dim1, int64_t dim2, int64_t ins1,
 void FusedBatchNorm4411(int64_t s1, int64_t s2, int64_t s3, int64_t s4,
                         uint64_t *inArr, uint64_t *multArr, uint64_t *biasArr,
                         int64_t multExprScaleDownSf, int64_t biasExprScaleUpSf,
-                        uint64_t *outputArr) {
+                        uint64_t *outputArr)
+{
+  // #if USE_CHEETAH
+  //   gemini::perf::StageTimer bn_stage("Stage: BatchNorm");
+  // #endif
+
   uint64_t *biasArrScaledUp = make_array<uint64_t>(s4);
-  for (uint64_t ii = 0; ii < s4; ii++) {
+  for (uint64_t ii = 0; ii < s4; ii++)
+  {
     Arr1DIdxRowM(biasArrScaledUp, s4, ii) = Arr1DIdxRowM(biasArr, s4, ii);
   }
-  if ((biasExprScaleUpSf > 0)) {
+  if ((biasExprScaleUpSf > 0))
+  {
     ScaleUp(s4, biasArrScaledUp, biasExprScaleUpSf);
   }
 
 #if USE_CHEETAH
-  if (gemini::IsTwoPower(prime_mod)) {
-    int64_t n_ct_coeff_packing  = ((s2 * s3 + 4095) / 4096) * s4;
-    int64_t n_ct_bfv_packing  = ((s2 * s3 * s4 + 4095) / 4096) * 3;
-    if (n_ct_coeff_packing < n_ct_bfv_packing) {
+  if (gemini::IsTwoPower(prime_mod))
+  {
+    int64_t n_ct_coeff_packing = ((s2 * s3 + 4095) / 4096) * s4;
+    int64_t n_ct_bfv_packing = ((s2 * s3 * s4 + 4095) / 4096) * 3;
+    if (n_ct_coeff_packing < n_ct_bfv_packing)
+    {
       BatchNorm(s1, s2, s3, s4, inArr, multArr, biasArrScaledUp, outputArr);
       ClearMemSecret1(s4, biasArrScaledUp);
       return;
@@ -1086,10 +1290,14 @@ void FusedBatchNorm4411(int64_t s1, int64_t s2, int64_t s3, int64_t s4,
   uint64_t *multArrReshaped = make_array<uint64_t>(inpSize);
 
   uint64_t *multExprAns = make_array<uint64_t>(inpSize);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
           int64_t linIdx =
               ((((((i1 * s2) * s3) * s4) + ((i2 * s3) * s4)) + (i3 * s4)) + i4);
           Arr1DIdxRowM(inArrReshaped, inpSize, linIdx) =
@@ -1102,15 +1310,19 @@ void FusedBatchNorm4411(int64_t s1, int64_t s2, int64_t s3, int64_t s4,
   }
   ElemWiseActModelVectorMult(inpSize, inArrReshaped, multArrReshaped,
                              multExprAns);
-  if ((multExprScaleDownSf > 0)) {
+  if ((multExprScaleDownSf > 0))
+  {
     ScaleDown(inpSize, multExprAns, multExprScaleDownSf);
   }
 
-
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
           int64_t linIdx =
               ((((((i1 * s2) * s3) * s4) + ((i2 * s3) * s4)) + (i3 * s4)) + i4);
           Arr4DIdxRowM(outputArr, s1, s2, s3, s4, i1, i2, i3, i4) =
@@ -1131,12 +1343,17 @@ void FusedBatchNorm4411(int64_t s1, int64_t s2, int64_t s3, int64_t s4,
   //   kScale) << " ";
   // }
   // std::cout << "\n";
+
+  // #if USE_CHEETAH
+  //   bn_stage.done();
+  // #endif
 }
 
 void FusedBatchNorm5511(int64_t s1, int64_t s2, int64_t s3, int64_t s4,
                         int64_t s5, uint64_t *inArr, uint64_t *multArr,
                         uint64_t *biasArr, int64_t multExprScaleDownSf,
-                        int64_t biasExprScaleUpSf, uint64_t *outputArr) {
+                        int64_t biasExprScaleUpSf, uint64_t *outputArr)
+{
   int64_t inpSize = ((((s1 * s2) * s3) * s4) * s5);
 
   uint64_t *inArrReshaped = make_array<uint64_t>(inpSize);
@@ -1144,11 +1361,16 @@ void FusedBatchNorm5511(int64_t s1, int64_t s2, int64_t s3, int64_t s4,
   uint64_t *multArrReshaped = make_array<uint64_t>(inpSize);
 
   uint64_t *multExprAns = make_array<uint64_t>(inpSize);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
-          for (uint64_t i5 = 0; i5 < s5; i5++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
+          for (uint64_t i5 = 0; i5 < s5; i5++)
+          {
             int64_t linIdx =
                 ((((((((i1 * s2) * s3) * s4) * s5) + (((i2 * s3) * s4) * s5)) +
                    ((i3 * s4) * s5)) +
@@ -1165,22 +1387,30 @@ void FusedBatchNorm5511(int64_t s1, int64_t s2, int64_t s3, int64_t s4,
   }
   ElemWiseActModelVectorMult(inpSize, inArrReshaped, multArrReshaped,
                              multExprAns);
-  if ((multExprScaleDownSf > 0)) {
+  if ((multExprScaleDownSf > 0))
+  {
     ScaleDown(inpSize, multExprAns, multExprScaleDownSf);
   }
 
   uint64_t *biasArrScaledUp = make_array<uint64_t>(s5);
-  for (uint64_t ii = 0; ii < s5; ii++) {
+  for (uint64_t ii = 0; ii < s5; ii++)
+  {
     Arr1DIdxRowM(biasArrScaledUp, s5, ii) = Arr1DIdxRowM(biasArr, s5, ii);
   }
-  if ((biasExprScaleUpSf > 0)) {
+  if ((biasExprScaleUpSf > 0))
+  {
     ScaleUp(s5, biasArrScaledUp, biasExprScaleUpSf);
   }
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
-          for (uint64_t i5 = 0; i5 < s5; i5++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
+          for (uint64_t i5 = 0; i5 < s5; i5++)
+          {
             int64_t linIdx =
                 ((((((((i1 * s2) * s3) * s4) * s5) + (((i2 * s3) * s4) * s5)) +
                    ((i3 * s4) * s5)) +
@@ -1201,7 +1431,8 @@ void FusedBatchNorm5511(int64_t s1, int64_t s2, int64_t s3, int64_t s4,
 }
 
 void ElemWiseMul2(int64_t s1, int64_t s2, uint64_t *arr1, uint64_t *arr2,
-                  uint64_t *outArr) {
+                  uint64_t *outArr)
+{
   int64_t inpSize = (s1 * s2);
 
   uint64_t *arr1Reshaped = make_array<uint64_t>(inpSize);
@@ -1209,8 +1440,10 @@ void ElemWiseMul2(int64_t s1, int64_t s2, uint64_t *arr1, uint64_t *arr2,
   uint64_t *arr2Reshaped = make_array<uint64_t>(inpSize);
 
   uint64_t *outArrReshaped = make_array<uint64_t>(inpSize);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
       int64_t linIdx = ((i1 * s2) + i2);
       Arr1DIdxRowM(arr1Reshaped, inpSize, linIdx) =
           Arr2DIdxRowM(arr1, s1, s2, i1, i2);
@@ -1220,8 +1453,10 @@ void ElemWiseMul2(int64_t s1, int64_t s2, uint64_t *arr1, uint64_t *arr2,
   }
   ElemWiseSecretSharedVectorMult(inpSize, arr1Reshaped, arr2Reshaped,
                                  outArrReshaped);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
       int64_t linIdx = ((i1 * s2) + i2);
       Arr2DIdxRowM(outArr, s1, s2, i1, i2) =
           Arr1DIdxRowM(outArrReshaped, inpSize, linIdx);
@@ -1233,7 +1468,8 @@ void ElemWiseMul2(int64_t s1, int64_t s2, uint64_t *arr1, uint64_t *arr2,
 }
 
 void ElemWiseMul4(int64_t s1, int64_t s2, int64_t s3, int64_t s4,
-                  uint64_t *arr1, uint64_t *arr2, uint64_t *outArr) {
+                  uint64_t *arr1, uint64_t *arr2, uint64_t *outArr)
+{
   int64_t inpSize = (((s1 * s2) * s3) * s4);
 
   uint64_t *arr1Reshaped = make_array<uint64_t>(inpSize);
@@ -1241,10 +1477,14 @@ void ElemWiseMul4(int64_t s1, int64_t s2, int64_t s3, int64_t s4,
   uint64_t *arr2Reshaped = make_array<uint64_t>(inpSize);
 
   uint64_t *outArrReshaped = make_array<uint64_t>(inpSize);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
           int64_t linIdx =
               ((((((i1 * s2) * s3) * s4) + ((i2 * s3) * s4)) + (i3 * s4)) + i4);
           Arr1DIdxRowM(arr1Reshaped, inpSize, linIdx) =
@@ -1257,10 +1497,14 @@ void ElemWiseMul4(int64_t s1, int64_t s2, int64_t s3, int64_t s4,
   }
   ElemWiseSecretSharedVectorMult(inpSize, arr1Reshaped, arr2Reshaped,
                                  outArrReshaped);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
           int64_t linIdx =
               ((((((i1 * s2) * s3) * s4) + ((i2 * s3) * s4)) + (i3 * s4)) + i4);
           Arr4DIdxRowM(outArr, s1, s2, s3, s4, i1, i2, i3, i4) =
@@ -1275,7 +1519,8 @@ void ElemWiseMul4(int64_t s1, int64_t s2, int64_t s3, int64_t s4,
 }
 
 void ElemWiseMul5(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t s5,
-                  uint64_t *arr1, uint64_t *arr2, uint64_t *outArr) {
+                  uint64_t *arr1, uint64_t *arr2, uint64_t *outArr)
+{
   int64_t inpSize = ((((s1 * s2) * s3) * s4) * s5);
 
   uint64_t *arr1Reshaped = make_array<uint64_t>(inpSize);
@@ -1283,11 +1528,16 @@ void ElemWiseMul5(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t s5,
   uint64_t *arr2Reshaped = make_array<uint64_t>(inpSize);
 
   uint64_t *outArrReshaped = make_array<uint64_t>(inpSize);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
-          for (uint64_t i5 = 0; i5 < s5; i5++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
+          for (uint64_t i5 = 0; i5 < s5; i5++)
+          {
             int64_t linIdx =
                 ((((((((i1 * s2) * s3) * s4) * s5) + (((i2 * s3) * s4) * s5)) +
                    ((i3 * s4) * s5)) +
@@ -1304,11 +1554,16 @@ void ElemWiseMul5(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t s5,
   }
   ElemWiseSecretSharedVectorMult(inpSize, arr1Reshaped, arr2Reshaped,
                                  outArrReshaped);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
-          for (uint64_t i5 = 0; i5 < s5; i5++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
+          for (uint64_t i5 = 0; i5 < s5; i5++)
+          {
             int64_t linIdx =
                 ((((((((i1 * s2) * s3) * s4) * s5) + (((i2 * s3) * s4) * s5)) +
                    ((i3 * s4) * s5)) +
@@ -1328,7 +1583,8 @@ void ElemWiseMul5(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t s5,
 
 void ReduceMean24(int64_t outS1, int64_t outS2, int64_t inS1, int64_t inS2,
                   int64_t inS3, int64_t inS4, uint64_t *inputArr, int64_t *axes,
-                  uint64_t *outputArr) {
+                  uint64_t *outputArr)
+{
   int64_t divisor = (inS2 * inS3);
 
   int64_t outputSize = (outS1 * outS2);
@@ -1336,11 +1592,15 @@ void ReduceMean24(int64_t outS1, int64_t outS2, int64_t inS1, int64_t inS2,
   uint64_t *sumArr = make_array<uint64_t>(outputSize);
 
   uint64_t *outputArrReshaped = make_array<uint64_t>(outputSize);
-  for (uint64_t i1 = 0; i1 < outS1; i1++) {
-    for (uint64_t i2 = 0; i2 < outS2; i2++) {
+  for (uint64_t i1 = 0; i1 < outS1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < outS2; i2++)
+    {
       uint64_t summ = funcSSCons((int64_t)0);
-      for (uint64_t i = 0; i < inS2; i++) {
-        for (uint64_t j = 0; j < inS3; j++) {
+      for (uint64_t i = 0; i < inS2; i++)
+      {
+        for (uint64_t j = 0; j < inS3; j++)
+        {
           summ = SecretAdd(summ, Arr4DIdxRowM(inputArr, inS1, inS2, inS3, inS4,
                                               i1, i, j, i2));
         }
@@ -1349,8 +1609,10 @@ void ReduceMean24(int64_t outS1, int64_t outS2, int64_t inS1, int64_t inS2,
     }
   }
   ElemWiseVectorPublicDiv(outputSize, sumArr, divisor, outputArrReshaped);
-  for (uint64_t i1 = 0; i1 < outS1; i1++) {
-    for (uint64_t i2 = 0; i2 < outS2; i2++) {
+  for (uint64_t i1 = 0; i1 < outS1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < outS2; i2++)
+    {
       Arr2DIdxRowM(outputArr, outS1, outS2, i1, i2) =
           Arr1DIdxRowM(outputArrReshaped, outputSize, ((i1 * outS2) + i2));
     }
@@ -1361,7 +1623,8 @@ void ReduceMean24(int64_t outS1, int64_t outS2, int64_t inS1, int64_t inS2,
 
 void ReduceMeanONNX24(int64_t outS1, int64_t outS2, int64_t inS1, int64_t inS2,
                       int64_t inS3, int64_t inS4, uint64_t *inputArr,
-                      int64_t axis1, int64_t axis2, uint64_t *outputArr) {
+                      int64_t axis1, int64_t axis2, uint64_t *outputArr)
+{
   int64_t divisor = (inS3 * inS4);
 
   int64_t outputSize = (outS1 * outS2);
@@ -1369,11 +1632,15 @@ void ReduceMeanONNX24(int64_t outS1, int64_t outS2, int64_t inS1, int64_t inS2,
   uint64_t *sumArr = make_array<uint64_t>(outputSize);
 
   uint64_t *outputArrReshaped = make_array<uint64_t>(outputSize);
-  for (uint64_t i1 = 0; i1 < outS1; i1++) {
-    for (uint64_t i2 = 0; i2 < outS2; i2++) {
+  for (uint64_t i1 = 0; i1 < outS1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < outS2; i2++)
+    {
       uint64_t summ = funcSSCons((int64_t)0);
-      for (uint64_t i = 0; i < inS3; i++) {
-        for (uint64_t j = 0; j < inS4; j++) {
+      for (uint64_t i = 0; i < inS3; i++)
+      {
+        for (uint64_t j = 0; j < inS4; j++)
+        {
           summ = SecretAdd(summ, Arr4DIdxRowM(inputArr, inS1, inS2, inS3, inS4,
                                               i1, i2, i, j));
         }
@@ -1382,8 +1649,10 @@ void ReduceMeanONNX24(int64_t outS1, int64_t outS2, int64_t inS1, int64_t inS2,
     }
   }
   ElemWiseVectorPublicDiv(outputSize, sumArr, divisor, outputArrReshaped);
-  for (uint64_t i1 = 0; i1 < outS1; i1++) {
-    for (uint64_t i2 = 0; i2 < outS2; i2++) {
+  for (uint64_t i1 = 0; i1 < outS1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < outS2; i2++)
+    {
       Arr2DIdxRowM(outputArr, outS1, outS2, i1, i2) =
           Arr1DIdxRowM(outputArrReshaped, outputSize, ((i1 * outS2) + i2));
     }
@@ -1393,22 +1662,28 @@ void ReduceMeanONNX24(int64_t outS1, int64_t outS2, int64_t inS1, int64_t inS2,
 }
 
 void ArgMax1(int64_t outArrS1, int64_t inArrS1, int64_t inArrS2,
-             uint64_t *inArr, int64_t dim, uint64_t *outArr) {
+             uint64_t *inArr, int64_t dim, uint64_t *outArr)
+{
   ArgMax(inArrS1, inArrS2, inArr, outArr);
 }
 
 void ArgMax3(int64_t outs1, int64_t outs2, int64_t outs3, int64_t ins1,
              int64_t ins2, int64_t ins3, int64_t ins4, uint64_t *inArr,
-             int64_t dim, uint64_t *outArr) {
+             int64_t dim, uint64_t *outArr)
+{
   int64_t size = ((ins1 * ins2) * ins3);
 
   uint64_t *reshapedInArr = make_array<uint64_t>(size, ins4);
 
   uint64_t *reshapedOutArr = make_array<uint64_t>(size);
-  for (uint64_t i1 = 0; i1 < ins1; i1++) {
-    for (uint64_t i2 = 0; i2 < ins2; i2++) {
-      for (uint64_t i3 = 0; i3 < ins3; i3++) {
-        for (uint64_t i4 = 0; i4 < ins4; i4++) {
+  for (uint64_t i1 = 0; i1 < ins1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < ins2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < ins3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < ins4; i4++)
+        {
           int64_t linIdx = ((((i1 * ins2) * ins3) + (i2 * ins3)) + i3);
           Arr2DIdxRowM(reshapedInArr, size, ins4, linIdx, i4) =
               Arr4DIdxRowM(inArr, ins1, ins2, ins3, ins4, i1, i2, i3, i4);
@@ -1417,9 +1692,12 @@ void ArgMax3(int64_t outs1, int64_t outs2, int64_t outs3, int64_t ins1,
     }
   }
   ArgMax(size, ins4, reshapedInArr, reshapedOutArr);
-  for (uint64_t i1 = 0; i1 < ins1; i1++) {
-    for (uint64_t i2 = 0; i2 < ins2; i2++) {
-      for (uint64_t i3 = 0; i3 < ins3; i3++) {
+  for (uint64_t i1 = 0; i1 < ins1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < ins2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < ins3; i3++)
+      {
         int64_t linIdx = ((((i1 * ins2) * ins3) + (i2 * ins3)) + i3);
         Arr3DIdxRowM(outArr, outs1, outs2, outs3, i1, i2, i3) =
             Arr1DIdxRowM(reshapedOutArr, size, linIdx);
@@ -1431,22 +1709,27 @@ void ArgMax3(int64_t outs1, int64_t outs2, int64_t outs3, int64_t ins1,
 }
 
 void Relu2(int64_t s1, int64_t s2, uint64_t *inArr, uint64_t *outArr,
-           int64_t sf, uint64_t doTruncation) {
+           int64_t sf, uint64_t doTruncation)
+{
   int64_t size = (s1 * s2);
 
   uint64_t *reshapedInArr = make_array<uint64_t>(size);
 
   uint64_t *reshapedOutArr = make_array<uint64_t>(size);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
       int64_t linIdx = ((i1 * s2) + i2);
       Arr1DIdxRowM(reshapedInArr, size, linIdx) =
           Arr2DIdxRowM(inArr, s1, s2, i1, i2);
     }
   }
   Relu(size, reshapedInArr, reshapedOutArr, sf, doTruncation);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
       int64_t linIdx = ((i1 * s2) + i2);
       Arr2DIdxRowM(outArr, s1, s2, i1, i2) =
           Arr1DIdxRowM(reshapedOutArr, size, linIdx);
@@ -1457,16 +1740,25 @@ void Relu2(int64_t s1, int64_t s2, uint64_t *inArr, uint64_t *outArr,
 }
 
 void Relu4(int64_t s1, int64_t s2, int64_t s3, int64_t s4, uint64_t *inArr,
-           uint64_t *outArr, int64_t sf, uint64_t doTruncation) {
+           uint64_t *outArr, int64_t sf, uint64_t doTruncation)
+{
+  // #if USE_CHEETAH
+  //   gemini::perf::StageTimer relu_stage("Stage: ReLU+rq");
+  // #endif
+
   int64_t size = (((s1 * s2) * s3) * s4);
 
   uint64_t *reshapedInArr = make_array<uint64_t>(size);
 
   uint64_t *reshapedOutArr = make_array<uint64_t>(size);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
           int64_t linIdx =
               ((((((i1 * s2) * s3) * s4) + ((i2 * s3) * s4)) + (i3 * s4)) + i4);
           Arr1DIdxRowM(reshapedInArr, size, linIdx) =
@@ -1478,10 +1770,14 @@ void Relu4(int64_t s1, int64_t s2, int64_t s3, int64_t s4, uint64_t *inArr,
 
   Relu(size, reshapedInArr, reshapedOutArr, sf, doTruncation);
 
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
           int64_t linIdx =
               ((((((i1 * s2) * s3) * s4) + ((i2 * s3) * s4)) + (i3 * s4)) + i4);
           Arr4DIdxRowM(outArr, s1, s2, s3, s4, i1, i2, i3, i4) =
@@ -1492,21 +1788,30 @@ void Relu4(int64_t s1, int64_t s2, int64_t s3, int64_t s4, uint64_t *inArr,
   }
   ClearMemSecret1(size, reshapedInArr);
   ClearMemSecret1(size, reshapedOutArr);
+  // #if USE_CHEETAH
+  //   relu_stage.done();
+  // #endif
 }
 
 void Relu5(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t s5,
            uint64_t *inArr, uint64_t *outArr, int64_t sf,
-           uint64_t doTruncation) {
+           uint64_t doTruncation)
+{
   int64_t size = ((((s1 * s2) * s3) * s4) * s5);
 
   uint64_t *reshapedInArr = make_array<uint64_t>(size);
 
   uint64_t *reshapedOutArr = make_array<uint64_t>(size);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
-          for (uint64_t i5 = 0; i5 < s5; i5++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
+          for (uint64_t i5 = 0; i5 < s5; i5++)
+          {
             int64_t linIdx =
                 ((((((((i1 * s2) * s3) * s4) * s5) + (((i2 * s3) * s4) * s5)) +
                    ((i3 * s4) * s5)) +
@@ -1520,11 +1825,16 @@ void Relu5(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t s5,
     }
   }
   Relu(size, reshapedInArr, reshapedOutArr, sf, doTruncation);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
-          for (uint64_t i5 = 0; i5 < s5; i5++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
+          for (uint64_t i5 = 0; i5 < s5; i5++)
+          {
             int64_t linIdx =
                 ((((((((i1 * s2) * s3) * s4) * s5) + (((i2 * s3) * s4) * s5)) +
                    ((i3 * s4) * s5)) +
@@ -1542,22 +1852,27 @@ void Relu5(int64_t s1, int64_t s2, int64_t s3, int64_t s4, int64_t s5,
 }
 
 void Floor2(int64_t s1, int64_t s2, uint64_t *inArr, uint64_t *outArr,
-            int64_t sf) {
+            int64_t sf)
+{
   int64_t size = (s1 * s2);
 
   uint64_t *reshapedInArr = make_array<uint64_t>(size);
 
   uint64_t *reshapedOutArr = make_array<uint64_t>(size);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
       int64_t linIdx = ((i1 * s2) + i2);
       Arr1DIdxRowM(reshapedInArr, size, linIdx) =
           Arr2DIdxRowM(inArr, s1, s2, i1, i2);
     }
   }
   Floor(size, reshapedInArr, reshapedOutArr, sf);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
       int64_t linIdx = ((i1 * s2) + i2);
       Arr2DIdxRowM(outArr, s1, s2, i1, i2) =
           Arr1DIdxRowM(reshapedOutArr, size, linIdx);
@@ -1569,20 +1884,25 @@ void Floor2(int64_t s1, int64_t s2, uint64_t *inArr, uint64_t *outArr,
 
 void ScaleUp1(int64_t s1, uint64_t *arr, int64_t sf) { ScaleUp(s1, arr, sf); }
 
-void ScaleUp2(int64_t s1, int64_t s2, uint64_t *arr, int64_t sf) {
+void ScaleUp2(int64_t s1, int64_t s2, uint64_t *arr, int64_t sf)
+{
   int64_t size = (s1 * s2);
 
   uint64_t *reshapedArr = make_array<uint64_t>(size);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
       int64_t linIdx = ((i1 * s2) + i2);
       Arr1DIdxRowM(reshapedArr, size, linIdx) =
           Arr2DIdxRowM(arr, s1, s2, i1, i2);
     }
   }
   ScaleUp(size, reshapedArr, sf);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
       int64_t linIdx = ((i1 * s2) + i2);
       Arr2DIdxRowM(arr, s1, s2, i1, i2) =
           Arr1DIdxRowM(reshapedArr, size, linIdx);
@@ -1591,13 +1911,17 @@ void ScaleUp2(int64_t s1, int64_t s2, uint64_t *arr, int64_t sf) {
   ClearMemSecret1(size, reshapedArr);
 }
 
-void ScaleUp3(int64_t s1, int64_t s2, int64_t s3, uint64_t *arr, int64_t sf) {
+void ScaleUp3(int64_t s1, int64_t s2, int64_t s3, uint64_t *arr, int64_t sf)
+{
   int64_t size = ((s1 * s2) * s3);
 
   uint64_t *reshapedArr = make_array<uint64_t>(size);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
         int64_t linIdx = ((((i1 * s2) * s3) + (i2 * s3)) + i3);
         Arr1DIdxRowM(reshapedArr, size, linIdx) =
             Arr3DIdxRowM(arr, s1, s2, s3, i1, i2, i3);
@@ -1605,9 +1929,12 @@ void ScaleUp3(int64_t s1, int64_t s2, int64_t s3, uint64_t *arr, int64_t sf) {
     }
   }
   ScaleUp(size, reshapedArr, sf);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
         int64_t linIdx = ((((i1 * s2) * s3) + (i2 * s3)) + i3);
         Arr3DIdxRowM(arr, s1, s2, s3, i1, i2, i3) =
             Arr1DIdxRowM(reshapedArr, size, linIdx);
@@ -1618,14 +1945,19 @@ void ScaleUp3(int64_t s1, int64_t s2, int64_t s3, uint64_t *arr, int64_t sf) {
 }
 
 void ScaleUp4(int64_t s1, int64_t s2, int64_t s3, int64_t s4, uint64_t *arr,
-              int64_t sf) {
+              int64_t sf)
+{
   int64_t size = (((s1 * s2) * s3) * s4);
 
   uint64_t *reshapedArr = make_array<uint64_t>(size);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
           int64_t linIdx =
               ((((((i1 * s2) * s3) * s4) + ((i2 * s3) * s4)) + (i3 * s4)) + i4);
           Arr1DIdxRowM(reshapedArr, size, linIdx) =
@@ -1635,10 +1967,14 @@ void ScaleUp4(int64_t s1, int64_t s2, int64_t s3, int64_t s4, uint64_t *arr,
     }
   }
   ScaleUp(size, reshapedArr, sf);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
           int64_t linIdx =
               ((((((i1 * s2) * s3) * s4) + ((i2 * s3) * s4)) + (i3 * s4)) + i4);
           Arr4DIdxRowM(arr, s1, s2, s3, s4, i1, i2, i3, i4) =
@@ -1650,24 +1986,30 @@ void ScaleUp4(int64_t s1, int64_t s2, int64_t s3, int64_t s4, uint64_t *arr,
   ClearMemSecret1(size, reshapedArr);
 }
 
-void ScaleDown1(int64_t s1, uint64_t *arr, int64_t sf) {
+void ScaleDown1(int64_t s1, uint64_t *arr, int64_t sf)
+{
   ScaleDown(s1, arr, sf);
 }
 
-void ScaleDown2(int64_t s1, int64_t s2, uint64_t *arr, int64_t sf) {
+void ScaleDown2(int64_t s1, int64_t s2, uint64_t *arr, int64_t sf)
+{
   int64_t size = (s1 * s2);
 
   uint64_t *reshapedArr = make_array<uint64_t>(size);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
       int64_t linIdx = ((i1 * s2) + i2);
       Arr1DIdxRowM(reshapedArr, size, linIdx) =
           Arr2DIdxRowM(arr, s1, s2, i1, i2);
     }
   }
   ScaleDown(size, reshapedArr, sf);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
       int64_t linIdx = ((i1 * s2) + i2);
       Arr2DIdxRowM(arr, s1, s2, i1, i2) =
           Arr1DIdxRowM(reshapedArr, size, linIdx);
@@ -1676,13 +2018,17 @@ void ScaleDown2(int64_t s1, int64_t s2, uint64_t *arr, int64_t sf) {
   ClearMemSecret1(size, reshapedArr);
 }
 
-void ScaleDown3(int64_t s1, int64_t s2, int64_t s3, uint64_t *arr, int64_t sf) {
+void ScaleDown3(int64_t s1, int64_t s2, int64_t s3, uint64_t *arr, int64_t sf)
+{
   int64_t size = ((s1 * s2) * s3);
 
   uint64_t *reshapedArr = make_array<uint64_t>(size);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
         int64_t linIdx = ((((i1 * s2) * s3) + (i2 * s3)) + i3);
         Arr1DIdxRowM(reshapedArr, size, linIdx) =
             Arr3DIdxRowM(arr, s1, s2, s3, i1, i2, i3);
@@ -1690,9 +2036,12 @@ void ScaleDown3(int64_t s1, int64_t s2, int64_t s3, uint64_t *arr, int64_t sf) {
     }
   }
   ScaleDown(size, reshapedArr, sf);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
         int64_t linIdx = ((((i1 * s2) * s3) + (i2 * s3)) + i3);
         Arr3DIdxRowM(arr, s1, s2, s3, i1, i2, i3) =
             Arr1DIdxRowM(reshapedArr, size, linIdx);
@@ -1703,14 +2052,22 @@ void ScaleDown3(int64_t s1, int64_t s2, int64_t s3, uint64_t *arr, int64_t sf) {
 }
 
 void ScaleDown4(int64_t s1, int64_t s2, int64_t s3, int64_t s4, uint64_t *arr,
-                int64_t sf) {
+                int64_t sf)
+{
+  // #if USE_CHEETAH
+  //   gemini::perf::StageTimer rq_stage("Stage: rq");
+  // #endif
   int64_t size = (((s1 * s2) * s3) * s4);
 
   uint64_t *reshapedArr = make_array<uint64_t>(size);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
           int64_t linIdx =
               ((((((i1 * s2) * s3) * s4) + ((i2 * s3) * s4)) + (i3 * s4)) + i4);
           Arr1DIdxRowM(reshapedArr, size, linIdx) =
@@ -1720,10 +2077,14 @@ void ScaleDown4(int64_t s1, int64_t s2, int64_t s3, int64_t s4, uint64_t *arr,
     }
   }
   ScaleDown(size, reshapedArr, sf);
-  for (uint64_t i1 = 0; i1 < s1; i1++) {
-    for (uint64_t i2 = 0; i2 < s2; i2++) {
-      for (uint64_t i3 = 0; i3 < s3; i3++) {
-        for (uint64_t i4 = 0; i4 < s4; i4++) {
+  for (uint64_t i1 = 0; i1 < s1; i1++)
+  {
+    for (uint64_t i2 = 0; i2 < s2; i2++)
+    {
+      for (uint64_t i3 = 0; i3 < s3; i3++)
+      {
+        for (uint64_t i4 = 0; i4 < s4; i4++)
+        {
           int64_t linIdx =
               ((((((i1 * s2) * s3) * s4) + ((i2 * s3) * s4)) + (i3 * s4)) + i4);
           Arr4DIdxRowM(arr, s1, s2, s3, s4, i1, i2, i3, i4) =
@@ -1733,26 +2094,40 @@ void ScaleDown4(int64_t s1, int64_t s2, int64_t s3, int64_t s4, uint64_t *arr,
     }
   }
   ClearMemSecret1(size, reshapedArr);
+
+  // #if USE_CHEETAH
+  //   rq_stage.done();
+  // #endif
 }
 
 void FusedBN(int32_t N, int32_t H, int32_t W, int32_t CI, int32_t fh,
              int32_t fw, int32_t CO, int32_t padHLeft, int32_t padHRight,
              int32_t padWLeft, int32_t padWRight, int32_t strideH,
-             int32_t strideW, uint64_t *in_tensor, 
+             int32_t strideW, uint64_t *in_tensor,
              const uint64_t *filters,
-             const uint64_t *bn_scales, 
+             const uint64_t *bn_scales,
              const uint64_t *bn_bias,
-             uint64_t *out_tensor) {
+             uint64_t *out_tensor)
+{
+  // #if USE_CHEETAH
+  // gemini::perf::StageTimer conv_stage("Stage: HE-CONV (fused weights + bias)");
+  // #endif
   const double _scale = std::pow(2., kScale);
 
   uint64_t *scaled_filters = make_array<uint64_t>(fh, fw, CI, CO);
-  if (party == SERVER) {
-    std::vector<double>bn_scales_f64(CO);
-    std::transform(bn_scales, bn_scales + CO, bn_scales_f64.data(), [_scale](uint64_t v) -> double { return getSignValue(v) / _scale; });
-    for (int32_t h = 0; h < fh; ++h) {
-      for (int32_t w = 0; w < fw; ++w) {
-        for (int32_t c = 0; c < CI; ++c) {
-          for (int32_t m = 0; m < CO; ++m) {
+  if (party == SERVER)
+  {
+    std::vector<double> bn_scales_f64(CO);
+    std::transform(bn_scales, bn_scales + CO, bn_scales_f64.data(), [_scale](uint64_t v) -> double
+                   { return getSignValue(v) / _scale; });
+    for (int32_t h = 0; h < fh; ++h)
+    {
+      for (int32_t w = 0; w < fw; ++w)
+      {
+        for (int32_t c = 0; c < CI; ++c)
+        {
+          for (int32_t m = 0; m < CO; ++m)
+          {
             const double bn_scale = bn_scales_f64[m];
             double fval = getSignValue(Arr4DIdxRowM(filters, fh, fw, CI, CO, h, w, c, m)) / _scale;
             int64_t f64 = static_cast<int64_t>(std::round(fval * bn_scale * _scale));
@@ -1761,16 +2136,21 @@ void FusedBN(int32_t N, int32_t H, int32_t W, int32_t CI, int32_t fh,
         }
       }
     }
-    bool allz = std::all_of(scaled_filters, scaled_filters + fh * fw * CI * CO, [](uint64_t v) { return 0 == v; });
-    if (allz) {
-      for (int i = 0; i < 8; ++i) {
+    bool allz = std::all_of(scaled_filters, scaled_filters + fh * fw * CI * CO, [](uint64_t v)
+                            { return 0 == v; });
+    if (allz)
+    {
+      for (int i = 0; i < 8; ++i)
+      {
         double fval = getSignValue(filters[i]) / _scale;
-        std::cout << bn_scales_f64[i]  << " * " << fval << "\n";
+        std::cout << bn_scales_f64[i] << " * " << fval << "\n";
       }
       printf("warning! fusedBN result at all zero filter!\n");
       exit(0);
     }
-  } else {
+  }
+  else
+  {
     std::fill_n(scaled_filters, fh * fw * CI * CO, 0);
   }
 
@@ -1778,14 +2158,19 @@ void FusedBN(int32_t N, int32_t H, int32_t W, int32_t CI, int32_t fh,
 
   int32_t newH = (((H + (padHLeft + padHRight)) - fh) / strideH) + 1;
   int32_t newW = (((W + (padWLeft + padWRight)) - fw) / strideW) + 1;
-  if (party == SERVER) {
+  if (party == SERVER)
+  {
     uint64_t *scaled_bias = make_array<uint64_t>(CO);
     std::copy_n(bn_bias, CO, scaled_bias);
     ScaleUp1(CO, scaled_bias, kScale);
-    for (int32_t n = 0; n < N; ++n) {
-      for (int32_t h = 0; h < newH; ++h) {
-        for (int32_t w = 0; w < newW; ++w) {
-          for (int32_t m = 0; m < CO; ++m) {
+    for (int32_t n = 0; n < N; ++n)
+    {
+      for (int32_t h = 0; h < newH; ++h)
+      {
+        for (int32_t w = 0; w < newW; ++w)
+        {
+          for (int32_t m = 0; m < CO; ++m)
+          {
             uint64_t val = Arr4DIdxRowM(out_tensor, N, newH, newW, CO, n, h, w, m);
             Arr4DIdxRowM(out_tensor, N, newH, newW, CO, n, h, w, m) = SecretAdd(val, scaled_bias[m]);
           }
@@ -1795,11 +2180,16 @@ void FusedBN(int32_t N, int32_t H, int32_t W, int32_t CI, int32_t fh,
     ClearMemSecret1(CO, scaled_bias);
   }
   ClearMemSecret1(CO * CI * fh * fw, scaled_filters);
+
+  // #if USE_CHEETAH
+  //   conv_stage.done();
+  // #endif
 }
 
 #define gINPUT std::cin
 #define gINPUTCLOSE
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
   ArgMapping amap;
 
   amap.arg("r", party, "Role of party: ALICE/SERVER = 1; BOB/CLIENT = 2");
@@ -1816,12 +2206,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp0
    * at (1930,1-1930,46) */
   uint64_t __tmp_in_tmp0;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 224; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 224; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 3; i3++) {
-          if (party == CLIENT) {
-            gINPUT>> __tmp_in_tmp0;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 224; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 224; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 3; i3++)
+        {
+          if (party == CLIENT)
+          {
+            gINPUT >> __tmp_in_tmp0;
           }
           Arr4DIdxRowM(tmp0, 1, 224, 224, 3, i0, i1, i2, i3) =
               (party == CLIENT) ? __tmp_in_tmp0 : 0;
@@ -1834,12 +2229,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp1
    * at (1933,1-1933,43) */
   uint64_t __tmp_in_tmp1;
-  for (uint64_t i0 = (uint64_t)0; i0 < 7; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 7; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 3; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp1;
+  for (uint64_t i0 = (uint64_t)0; i0 < 7; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 7; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 3; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp1;
           }
           Arr4DIdxRowM(tmp1, 7, 7, 3, 64, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp1 : 0;
@@ -1852,9 +2252,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp2
    * at (1936,1-1936,34) */
   uint64_t __tmp_in_tmp2;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp2;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp2;
     }
     Arr1DIdxRowM(tmp2, 64, i0) = (party == SERVER) ? __tmp_in_tmp2 : 0;
   }
@@ -1863,9 +2265,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp3
    * at (1939,1-1939,34) */
   uint64_t __tmp_in_tmp3;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp3;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp3;
     }
     Arr1DIdxRowM(tmp3, 64, i0) = (party == SERVER) ? __tmp_in_tmp3 : 0;
   }
@@ -1874,9 +2278,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp4
    * at (1942,1-1942,34) */
   uint64_t __tmp_in_tmp4;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp4;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp4;
     }
     Arr1DIdxRowM(tmp4, 64, i0) = (party == SERVER) ? __tmp_in_tmp4 : 0;
   }
@@ -1885,9 +2291,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp5
    * at (1945,1-1945,34) */
   uint64_t __tmp_in_tmp5;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp5;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp5;
     }
     Arr1DIdxRowM(tmp5, 64, i0) = (party == SERVER) ? __tmp_in_tmp5 : 0;
   }
@@ -1896,12 +2304,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp6
    * at (1948,1-1948,45) */
   uint64_t __tmp_in_tmp6;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp6;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp6;
           }
           Arr4DIdxRowM(tmp6, 1, 1, 64, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp6 : 0;
@@ -1914,12 +2327,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp7
    * at (1951,1-1951,44) */
   uint64_t __tmp_in_tmp7;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp7;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp7;
           }
           Arr4DIdxRowM(tmp7, 1, 1, 64, 64, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp7 : 0;
@@ -1928,14 +2346,15 @@ int main(int argc, char **argv) {
     }
   }
 
-
   uint64_t *tmp8 = make_array<uint64_t>(64);
   /* Variable to read the clear value corresponding to the input variable tmp8
    * at (1954,1-1954,34) */
   uint64_t __tmp_in_tmp8;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp8;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp8;
     }
     Arr1DIdxRowM(tmp8, 64, i0) = (party == SERVER) ? __tmp_in_tmp8 : 0;
   }
@@ -1944,9 +2363,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp9
    * at (1957,1-1957,34) */
   uint64_t __tmp_in_tmp9;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp9;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp9;
     }
     Arr1DIdxRowM(tmp9, 64, i0) = (party == SERVER) ? __tmp_in_tmp9 : 0;
   }
@@ -1955,9 +2376,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp10
    * at (1960,1-1960,35) */
   uint64_t __tmp_in_tmp10;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp10;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp10;
     }
     Arr1DIdxRowM(tmp10, 64, i0) = (party == SERVER) ? __tmp_in_tmp10 : 0;
   }
@@ -1966,9 +2389,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp11
    * at (1963,1-1963,35) */
   uint64_t __tmp_in_tmp11;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp11;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp11;
     }
     Arr1DIdxRowM(tmp11, 64, i0) = (party == SERVER) ? __tmp_in_tmp11 : 0;
   }
@@ -1977,12 +2402,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp12
    * at (1966,1-1966,45) */
   uint64_t __tmp_in_tmp12;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp12;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp12;
           }
           Arr4DIdxRowM(tmp12, 3, 3, 64, 64, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp12 : 0;
@@ -1995,9 +2425,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp13
    * at (1969,1-1969,35) */
   uint64_t __tmp_in_tmp13;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp13;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp13;
     }
     Arr1DIdxRowM(tmp13, 64, i0) = (party == SERVER) ? __tmp_in_tmp13 : 0;
   }
@@ -2006,9 +2438,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp14
    * at (1972,1-1972,35) */
   uint64_t __tmp_in_tmp14;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp14;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp14;
     }
     Arr1DIdxRowM(tmp14, 64, i0) = (party == SERVER) ? __tmp_in_tmp14 : 0;
   }
@@ -2017,9 +2451,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp15
    * at (1975,1-1975,35) */
   uint64_t __tmp_in_tmp15;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp15;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp15;
     }
     Arr1DIdxRowM(tmp15, 64, i0) = (party == SERVER) ? __tmp_in_tmp15 : 0;
   }
@@ -2028,9 +2464,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp16
    * at (1978,1-1978,35) */
   uint64_t __tmp_in_tmp16;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp16;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp16;
     }
     Arr1DIdxRowM(tmp16, 64, i0) = (party == SERVER) ? __tmp_in_tmp16 : 0;
   }
@@ -2039,12 +2477,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp17
    * at (1981,1-1981,46) */
   uint64_t __tmp_in_tmp17;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp17;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp17;
           }
           Arr4DIdxRowM(tmp17, 1, 1, 64, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp17 : 0;
@@ -2057,9 +2500,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp18
    * at (1984,1-1984,36) */
   uint64_t __tmp_in_tmp18;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp18;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp18;
     }
     Arr1DIdxRowM(tmp18, 256, i0) = (party == SERVER) ? __tmp_in_tmp18 : 0;
   }
@@ -2068,9 +2513,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp19
    * at (1987,1-1987,36) */
   uint64_t __tmp_in_tmp19;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp19;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp19;
     }
     Arr1DIdxRowM(tmp19, 256, i0) = (party == SERVER) ? __tmp_in_tmp19 : 0;
   }
@@ -2079,9 +2526,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp20
    * at (1990,1-1990,36) */
   uint64_t __tmp_in_tmp20;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp20;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp20;
     }
     Arr1DIdxRowM(tmp20, 256, i0) = (party == SERVER) ? __tmp_in_tmp20 : 0;
   }
@@ -2090,9 +2539,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp21
    * at (1993,1-1993,36) */
   uint64_t __tmp_in_tmp21;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp21;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp21;
     }
     Arr1DIdxRowM(tmp21, 256, i0) = (party == SERVER) ? __tmp_in_tmp21 : 0;
   }
@@ -2101,12 +2552,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp22
    * at (1996,1-1996,46) */
   uint64_t __tmp_in_tmp22;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp22;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp22;
           }
           Arr4DIdxRowM(tmp22, 1, 1, 256, 64, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp22 : 0;
@@ -2119,9 +2575,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp23
    * at (1999,1-1999,35) */
   uint64_t __tmp_in_tmp23;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp23;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp23;
     }
     Arr1DIdxRowM(tmp23, 64, i0) = (party == SERVER) ? __tmp_in_tmp23 : 0;
   }
@@ -2130,9 +2588,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp24
    * at (2002,1-2002,35) */
   uint64_t __tmp_in_tmp24;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp24;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp24;
     }
     Arr1DIdxRowM(tmp24, 64, i0) = (party == SERVER) ? __tmp_in_tmp24 : 0;
   }
@@ -2141,9 +2601,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp25
    * at (2005,1-2005,35) */
   uint64_t __tmp_in_tmp25;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp25;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp25;
     }
     Arr1DIdxRowM(tmp25, 64, i0) = (party == SERVER) ? __tmp_in_tmp25 : 0;
   }
@@ -2152,9 +2614,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp26
    * at (2008,1-2008,35) */
   uint64_t __tmp_in_tmp26;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp26;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp26;
     }
     Arr1DIdxRowM(tmp26, 64, i0) = (party == SERVER) ? __tmp_in_tmp26 : 0;
   }
@@ -2163,12 +2627,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp27
    * at (2011,1-2011,45) */
   uint64_t __tmp_in_tmp27;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp27;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp27;
           }
           Arr4DIdxRowM(tmp27, 3, 3, 64, 64, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp27 : 0;
@@ -2181,9 +2650,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp28
    * at (2014,1-2014,35) */
   uint64_t __tmp_in_tmp28;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp28;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp28;
     }
     Arr1DIdxRowM(tmp28, 64, i0) = (party == SERVER) ? __tmp_in_tmp28 : 0;
   }
@@ -2192,9 +2663,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp29
    * at (2017,1-2017,35) */
   uint64_t __tmp_in_tmp29;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp29;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp29;
     }
     Arr1DIdxRowM(tmp29, 64, i0) = (party == SERVER) ? __tmp_in_tmp29 : 0;
   }
@@ -2203,9 +2676,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp30
    * at (2020,1-2020,35) */
   uint64_t __tmp_in_tmp30;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp30;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp30;
     }
     Arr1DIdxRowM(tmp30, 64, i0) = (party == SERVER) ? __tmp_in_tmp30 : 0;
   }
@@ -2214,9 +2689,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp31
    * at (2023,1-2023,35) */
   uint64_t __tmp_in_tmp31;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp31;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp31;
     }
     Arr1DIdxRowM(tmp31, 64, i0) = (party == SERVER) ? __tmp_in_tmp31 : 0;
   }
@@ -2225,12 +2702,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp32
    * at (2026,1-2026,46) */
   uint64_t __tmp_in_tmp32;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp32;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp32;
           }
           Arr4DIdxRowM(tmp32, 1, 1, 64, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp32 : 0;
@@ -2243,9 +2725,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp33
    * at (2029,1-2029,36) */
   uint64_t __tmp_in_tmp33;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp33;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp33;
     }
     Arr1DIdxRowM(tmp33, 256, i0) = (party == SERVER) ? __tmp_in_tmp33 : 0;
   }
@@ -2254,9 +2738,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp34
    * at (2032,1-2032,36) */
   uint64_t __tmp_in_tmp34;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp34;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp34;
     }
     Arr1DIdxRowM(tmp34, 256, i0) = (party == SERVER) ? __tmp_in_tmp34 : 0;
   }
@@ -2265,9 +2751,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp35
    * at (2035,1-2035,36) */
   uint64_t __tmp_in_tmp35;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp35;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp35;
     }
     Arr1DIdxRowM(tmp35, 256, i0) = (party == SERVER) ? __tmp_in_tmp35 : 0;
   }
@@ -2276,9 +2764,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp36
    * at (2038,1-2038,36) */
   uint64_t __tmp_in_tmp36;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp36;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp36;
     }
     Arr1DIdxRowM(tmp36, 256, i0) = (party == SERVER) ? __tmp_in_tmp36 : 0;
   }
@@ -2287,12 +2777,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp37
    * at (2041,1-2041,46) */
   uint64_t __tmp_in_tmp37;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp37;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp37;
           }
           Arr4DIdxRowM(tmp37, 1, 1, 256, 64, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp37 : 0;
@@ -2305,9 +2800,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp38
    * at (2044,1-2044,35) */
   uint64_t __tmp_in_tmp38;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp38;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp38;
     }
     Arr1DIdxRowM(tmp38, 64, i0) = (party == SERVER) ? __tmp_in_tmp38 : 0;
   }
@@ -2316,9 +2813,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp39
    * at (2047,1-2047,35) */
   uint64_t __tmp_in_tmp39;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp39;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp39;
     }
     Arr1DIdxRowM(tmp39, 64, i0) = (party == SERVER) ? __tmp_in_tmp39 : 0;
   }
@@ -2327,9 +2826,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp40
    * at (2050,1-2050,35) */
   uint64_t __tmp_in_tmp40;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp40;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp40;
     }
     Arr1DIdxRowM(tmp40, 64, i0) = (party == SERVER) ? __tmp_in_tmp40 : 0;
   }
@@ -2338,9 +2839,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp41
    * at (2053,1-2053,35) */
   uint64_t __tmp_in_tmp41;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp41;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp41;
     }
     Arr1DIdxRowM(tmp41, 64, i0) = (party == SERVER) ? __tmp_in_tmp41 : 0;
   }
@@ -2349,12 +2852,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp42
    * at (2056,1-2056,45) */
   uint64_t __tmp_in_tmp42;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp42;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 64; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp42;
           }
           Arr4DIdxRowM(tmp42, 3, 3, 64, 64, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp42 : 0;
@@ -2367,9 +2875,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp43
    * at (2059,1-2059,35) */
   uint64_t __tmp_in_tmp43;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp43;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp43;
     }
     Arr1DIdxRowM(tmp43, 64, i0) = (party == SERVER) ? __tmp_in_tmp43 : 0;
   }
@@ -2378,9 +2888,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp44
    * at (2062,1-2062,35) */
   uint64_t __tmp_in_tmp44;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp44;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp44;
     }
     Arr1DIdxRowM(tmp44, 64, i0) = (party == SERVER) ? __tmp_in_tmp44 : 0;
   }
@@ -2389,9 +2901,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp45
    * at (2065,1-2065,35) */
   uint64_t __tmp_in_tmp45;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp45;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp45;
     }
     Arr1DIdxRowM(tmp45, 64, i0) = (party == SERVER) ? __tmp_in_tmp45 : 0;
   }
@@ -2400,9 +2914,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp46
    * at (2068,1-2068,35) */
   uint64_t __tmp_in_tmp46;
-  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp46;
+  for (uint64_t i0 = (uint64_t)0; i0 < 64; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp46;
     }
     Arr1DIdxRowM(tmp46, 64, i0) = (party == SERVER) ? __tmp_in_tmp46 : 0;
   }
@@ -2411,12 +2927,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp47
    * at (2071,1-2071,46) */
   uint64_t __tmp_in_tmp47;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp47;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 64; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp47;
           }
           Arr4DIdxRowM(tmp47, 1, 1, 64, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp47 : 0;
@@ -2429,9 +2950,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp48
    * at (2074,1-2074,36) */
   uint64_t __tmp_in_tmp48;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp48;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp48;
     }
     Arr1DIdxRowM(tmp48, 256, i0) = (party == SERVER) ? __tmp_in_tmp48 : 0;
   }
@@ -2440,9 +2963,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp49
    * at (2077,1-2077,36) */
   uint64_t __tmp_in_tmp49;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp49;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp49;
     }
     Arr1DIdxRowM(tmp49, 256, i0) = (party == SERVER) ? __tmp_in_tmp49 : 0;
   }
@@ -2451,9 +2976,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp50
    * at (2080,1-2080,36) */
   uint64_t __tmp_in_tmp50;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp50;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp50;
     }
     Arr1DIdxRowM(tmp50, 256, i0) = (party == SERVER) ? __tmp_in_tmp50 : 0;
   }
@@ -2462,9 +2989,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp51
    * at (2083,1-2083,36) */
   uint64_t __tmp_in_tmp51;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp51;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp51;
     }
     Arr1DIdxRowM(tmp51, 256, i0) = (party == SERVER) ? __tmp_in_tmp51 : 0;
   }
@@ -2473,12 +3002,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp52
    * at (2086,1-2086,47) */
   uint64_t __tmp_in_tmp52;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp52;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp52;
           }
           Arr4DIdxRowM(tmp52, 1, 1, 256, 512, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp52 : 0;
@@ -2491,12 +3025,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp53
    * at (2089,1-2089,47) */
   uint64_t __tmp_in_tmp53;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp53;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp53;
           }
           Arr4DIdxRowM(tmp53, 1, 1, 256, 128, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp53 : 0;
@@ -2509,9 +3048,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp54
    * at (2092,1-2092,36) */
   uint64_t __tmp_in_tmp54;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp54;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp54;
     }
     Arr1DIdxRowM(tmp54, 128, i0) = (party == SERVER) ? __tmp_in_tmp54 : 0;
   }
@@ -2520,9 +3061,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp55
    * at (2095,1-2095,36) */
   uint64_t __tmp_in_tmp55;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp55;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp55;
     }
     Arr1DIdxRowM(tmp55, 128, i0) = (party == SERVER) ? __tmp_in_tmp55 : 0;
   }
@@ -2531,9 +3074,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp56
    * at (2098,1-2098,36) */
   uint64_t __tmp_in_tmp56;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp56;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp56;
     }
     Arr1DIdxRowM(tmp56, 128, i0) = (party == SERVER) ? __tmp_in_tmp56 : 0;
   }
@@ -2542,9 +3087,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp57
    * at (2101,1-2101,36) */
   uint64_t __tmp_in_tmp57;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp57;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp57;
     }
     Arr1DIdxRowM(tmp57, 128, i0) = (party == SERVER) ? __tmp_in_tmp57 : 0;
   }
@@ -2553,12 +3100,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp58
    * at (2104,1-2104,47) */
   uint64_t __tmp_in_tmp58;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp58;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp58;
           }
           Arr4DIdxRowM(tmp58, 3, 3, 128, 128, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp58 : 0;
@@ -2571,9 +3123,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp59
    * at (2107,1-2107,36) */
   uint64_t __tmp_in_tmp59;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp59;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp59;
     }
     Arr1DIdxRowM(tmp59, 128, i0) = (party == SERVER) ? __tmp_in_tmp59 : 0;
   }
@@ -2582,9 +3136,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp60
    * at (2110,1-2110,36) */
   uint64_t __tmp_in_tmp60;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp60;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp60;
     }
     Arr1DIdxRowM(tmp60, 128, i0) = (party == SERVER) ? __tmp_in_tmp60 : 0;
   }
@@ -2593,9 +3149,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp61
    * at (2113,1-2113,36) */
   uint64_t __tmp_in_tmp61;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp61;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp61;
     }
     Arr1DIdxRowM(tmp61, 128, i0) = (party == SERVER) ? __tmp_in_tmp61 : 0;
   }
@@ -2604,9 +3162,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp62
    * at (2116,1-2116,36) */
   uint64_t __tmp_in_tmp62;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp62;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp62;
     }
     Arr1DIdxRowM(tmp62, 128, i0) = (party == SERVER) ? __tmp_in_tmp62 : 0;
   }
@@ -2615,12 +3175,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp63
    * at (2119,1-2119,47) */
   uint64_t __tmp_in_tmp63;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp63;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp63;
           }
           Arr4DIdxRowM(tmp63, 1, 1, 128, 512, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp63 : 0;
@@ -2633,9 +3198,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp64
    * at (2122,1-2122,36) */
   uint64_t __tmp_in_tmp64;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp64;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp64;
     }
     Arr1DIdxRowM(tmp64, 512, i0) = (party == SERVER) ? __tmp_in_tmp64 : 0;
   }
@@ -2644,9 +3211,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp65
    * at (2125,1-2125,36) */
   uint64_t __tmp_in_tmp65;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp65;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp65;
     }
     Arr1DIdxRowM(tmp65, 512, i0) = (party == SERVER) ? __tmp_in_tmp65 : 0;
   }
@@ -2655,9 +3224,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp66
    * at (2128,1-2128,36) */
   uint64_t __tmp_in_tmp66;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp66;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp66;
     }
     Arr1DIdxRowM(tmp66, 512, i0) = (party == SERVER) ? __tmp_in_tmp66 : 0;
   }
@@ -2666,9 +3237,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp67
    * at (2131,1-2131,36) */
   uint64_t __tmp_in_tmp67;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp67;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp67;
     }
     Arr1DIdxRowM(tmp67, 512, i0) = (party == SERVER) ? __tmp_in_tmp67 : 0;
   }
@@ -2677,12 +3250,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp68
    * at (2134,1-2134,47) */
   uint64_t __tmp_in_tmp68;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp68;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp68;
           }
           Arr4DIdxRowM(tmp68, 1, 1, 512, 128, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp68 : 0;
@@ -2695,9 +3273,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp69
    * at (2137,1-2137,36) */
   uint64_t __tmp_in_tmp69;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp69;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp69;
     }
     Arr1DIdxRowM(tmp69, 128, i0) = (party == SERVER) ? __tmp_in_tmp69 : 0;
   }
@@ -2706,9 +3286,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp70
    * at (2140,1-2140,36) */
   uint64_t __tmp_in_tmp70;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp70;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp70;
     }
     Arr1DIdxRowM(tmp70, 128, i0) = (party == SERVER) ? __tmp_in_tmp70 : 0;
   }
@@ -2717,9 +3299,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp71
    * at (2143,1-2143,36) */
   uint64_t __tmp_in_tmp71;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp71;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp71;
     }
     Arr1DIdxRowM(tmp71, 128, i0) = (party == SERVER) ? __tmp_in_tmp71 : 0;
   }
@@ -2728,9 +3312,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp72
    * at (2146,1-2146,36) */
   uint64_t __tmp_in_tmp72;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp72;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp72;
     }
     Arr1DIdxRowM(tmp72, 128, i0) = (party == SERVER) ? __tmp_in_tmp72 : 0;
   }
@@ -2739,12 +3325,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp73
    * at (2149,1-2149,47) */
   uint64_t __tmp_in_tmp73;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp73;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp73;
           }
           Arr4DIdxRowM(tmp73, 3, 3, 128, 128, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp73 : 0;
@@ -2757,9 +3348,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp74
    * at (2152,1-2152,36) */
   uint64_t __tmp_in_tmp74;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp74;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp74;
     }
     Arr1DIdxRowM(tmp74, 128, i0) = (party == SERVER) ? __tmp_in_tmp74 : 0;
   }
@@ -2768,9 +3361,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp75
    * at (2155,1-2155,36) */
   uint64_t __tmp_in_tmp75;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp75;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp75;
     }
     Arr1DIdxRowM(tmp75, 128, i0) = (party == SERVER) ? __tmp_in_tmp75 : 0;
   }
@@ -2779,9 +3374,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp76
    * at (2158,1-2158,36) */
   uint64_t __tmp_in_tmp76;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp76;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp76;
     }
     Arr1DIdxRowM(tmp76, 128, i0) = (party == SERVER) ? __tmp_in_tmp76 : 0;
   }
@@ -2790,9 +3387,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp77
    * at (2161,1-2161,36) */
   uint64_t __tmp_in_tmp77;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp77;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp77;
     }
     Arr1DIdxRowM(tmp77, 128, i0) = (party == SERVER) ? __tmp_in_tmp77 : 0;
   }
@@ -2801,12 +3400,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp78
    * at (2164,1-2164,47) */
   uint64_t __tmp_in_tmp78;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp78;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp78;
           }
           Arr4DIdxRowM(tmp78, 1, 1, 128, 512, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp78 : 0;
@@ -2819,9 +3423,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp79
    * at (2167,1-2167,36) */
   uint64_t __tmp_in_tmp79;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp79;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp79;
     }
     Arr1DIdxRowM(tmp79, 512, i0) = (party == SERVER) ? __tmp_in_tmp79 : 0;
   }
@@ -2830,9 +3436,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp80
    * at (2170,1-2170,36) */
   uint64_t __tmp_in_tmp80;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp80;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp80;
     }
     Arr1DIdxRowM(tmp80, 512, i0) = (party == SERVER) ? __tmp_in_tmp80 : 0;
   }
@@ -2841,9 +3449,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp81
    * at (2173,1-2173,36) */
   uint64_t __tmp_in_tmp81;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp81;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp81;
     }
     Arr1DIdxRowM(tmp81, 512, i0) = (party == SERVER) ? __tmp_in_tmp81 : 0;
   }
@@ -2852,9 +3462,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp82
    * at (2176,1-2176,36) */
   uint64_t __tmp_in_tmp82;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp82;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp82;
     }
     Arr1DIdxRowM(tmp82, 512, i0) = (party == SERVER) ? __tmp_in_tmp82 : 0;
   }
@@ -2863,12 +3475,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp83
    * at (2179,1-2179,47) */
   uint64_t __tmp_in_tmp83;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp83;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp83;
           }
           Arr4DIdxRowM(tmp83, 1, 1, 512, 128, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp83 : 0;
@@ -2881,9 +3498,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp84
    * at (2182,1-2182,36) */
   uint64_t __tmp_in_tmp84;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp84;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp84;
     }
     Arr1DIdxRowM(tmp84, 128, i0) = (party == SERVER) ? __tmp_in_tmp84 : 0;
   }
@@ -2892,9 +3511,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp85
    * at (2185,1-2185,36) */
   uint64_t __tmp_in_tmp85;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp85;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp85;
     }
     Arr1DIdxRowM(tmp85, 128, i0) = (party == SERVER) ? __tmp_in_tmp85 : 0;
   }
@@ -2903,9 +3524,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp86
    * at (2188,1-2188,36) */
   uint64_t __tmp_in_tmp86;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp86;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp86;
     }
     Arr1DIdxRowM(tmp86, 128, i0) = (party == SERVER) ? __tmp_in_tmp86 : 0;
   }
@@ -2914,9 +3537,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp87
    * at (2191,1-2191,36) */
   uint64_t __tmp_in_tmp87;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp87;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp87;
     }
     Arr1DIdxRowM(tmp87, 128, i0) = (party == SERVER) ? __tmp_in_tmp87 : 0;
   }
@@ -2925,12 +3550,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp88
    * at (2194,1-2194,47) */
   uint64_t __tmp_in_tmp88;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp88;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp88;
           }
           Arr4DIdxRowM(tmp88, 3, 3, 128, 128, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp88 : 0;
@@ -2943,9 +3573,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp89
    * at (2197,1-2197,36) */
   uint64_t __tmp_in_tmp89;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp89;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp89;
     }
     Arr1DIdxRowM(tmp89, 128, i0) = (party == SERVER) ? __tmp_in_tmp89 : 0;
   }
@@ -2954,9 +3586,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp90
    * at (2200,1-2200,36) */
   uint64_t __tmp_in_tmp90;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp90;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp90;
     }
     Arr1DIdxRowM(tmp90, 128, i0) = (party == SERVER) ? __tmp_in_tmp90 : 0;
   }
@@ -2965,9 +3599,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp91
    * at (2203,1-2203,36) */
   uint64_t __tmp_in_tmp91;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp91;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp91;
     }
     Arr1DIdxRowM(tmp91, 128, i0) = (party == SERVER) ? __tmp_in_tmp91 : 0;
   }
@@ -2976,9 +3612,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp92
    * at (2206,1-2206,36) */
   uint64_t __tmp_in_tmp92;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp92;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp92;
     }
     Arr1DIdxRowM(tmp92, 128, i0) = (party == SERVER) ? __tmp_in_tmp92 : 0;
   }
@@ -2987,12 +3625,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp93
    * at (2209,1-2209,47) */
   uint64_t __tmp_in_tmp93;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp93;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp93;
           }
           Arr4DIdxRowM(tmp93, 1, 1, 128, 512, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp93 : 0;
@@ -3005,9 +3648,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp94
    * at (2212,1-2212,36) */
   uint64_t __tmp_in_tmp94;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp94;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp94;
     }
     Arr1DIdxRowM(tmp94, 512, i0) = (party == SERVER) ? __tmp_in_tmp94 : 0;
   }
@@ -3016,9 +3661,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp95
    * at (2215,1-2215,36) */
   uint64_t __tmp_in_tmp95;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp95;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp95;
     }
     Arr1DIdxRowM(tmp95, 512, i0) = (party == SERVER) ? __tmp_in_tmp95 : 0;
   }
@@ -3027,9 +3674,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp96
    * at (2218,1-2218,36) */
   uint64_t __tmp_in_tmp96;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp96;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp96;
     }
     Arr1DIdxRowM(tmp96, 512, i0) = (party == SERVER) ? __tmp_in_tmp96 : 0;
   }
@@ -3038,9 +3687,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp97
    * at (2221,1-2221,36) */
   uint64_t __tmp_in_tmp97;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp97;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp97;
     }
     Arr1DIdxRowM(tmp97, 512, i0) = (party == SERVER) ? __tmp_in_tmp97 : 0;
   }
@@ -3049,12 +3700,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp98
    * at (2224,1-2224,47) */
   uint64_t __tmp_in_tmp98;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp98;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp98;
           }
           Arr4DIdxRowM(tmp98, 1, 1, 512, 128, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp98 : 0;
@@ -3067,9 +3723,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp99
    * at (2227,1-2227,36) */
   uint64_t __tmp_in_tmp99;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp99;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp99;
     }
     Arr1DIdxRowM(tmp99, 128, i0) = (party == SERVER) ? __tmp_in_tmp99 : 0;
   }
@@ -3078,9 +3736,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp100
    * at (2230,1-2230,37) */
   uint64_t __tmp_in_tmp100;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp100;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp100;
     }
     Arr1DIdxRowM(tmp100, 128, i0) = (party == SERVER) ? __tmp_in_tmp100 : 0;
   }
@@ -3089,9 +3749,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp101
    * at (2233,1-2233,37) */
   uint64_t __tmp_in_tmp101;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp101;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp101;
     }
     Arr1DIdxRowM(tmp101, 128, i0) = (party == SERVER) ? __tmp_in_tmp101 : 0;
   }
@@ -3100,9 +3762,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp102
    * at (2236,1-2236,37) */
   uint64_t __tmp_in_tmp102;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp102;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp102;
     }
     Arr1DIdxRowM(tmp102, 128, i0) = (party == SERVER) ? __tmp_in_tmp102 : 0;
   }
@@ -3111,12 +3775,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp103
    * at (2239,1-2239,48) */
   uint64_t __tmp_in_tmp103;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp103;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 128; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp103;
           }
           Arr4DIdxRowM(tmp103, 3, 3, 128, 128, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp103 : 0;
@@ -3129,9 +3798,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp104
    * at (2242,1-2242,37) */
   uint64_t __tmp_in_tmp104;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp104;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp104;
     }
     Arr1DIdxRowM(tmp104, 128, i0) = (party == SERVER) ? __tmp_in_tmp104 : 0;
   }
@@ -3140,9 +3811,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp105
    * at (2245,1-2245,37) */
   uint64_t __tmp_in_tmp105;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp105;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp105;
     }
     Arr1DIdxRowM(tmp105, 128, i0) = (party == SERVER) ? __tmp_in_tmp105 : 0;
   }
@@ -3151,9 +3824,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp106
    * at (2248,1-2248,37) */
   uint64_t __tmp_in_tmp106;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp106;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp106;
     }
     Arr1DIdxRowM(tmp106, 128, i0) = (party == SERVER) ? __tmp_in_tmp106 : 0;
   }
@@ -3162,9 +3837,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp107
    * at (2251,1-2251,37) */
   uint64_t __tmp_in_tmp107;
-  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp107;
+  for (uint64_t i0 = (uint64_t)0; i0 < 128; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp107;
     }
     Arr1DIdxRowM(tmp107, 128, i0) = (party == SERVER) ? __tmp_in_tmp107 : 0;
   }
@@ -3173,12 +3850,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp108
    * at (2254,1-2254,48) */
   uint64_t __tmp_in_tmp108;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp108;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 128; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp108;
           }
           Arr4DIdxRowM(tmp108, 1, 1, 128, 512, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp108 : 0;
@@ -3191,9 +3873,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp109
    * at (2257,1-2257,37) */
   uint64_t __tmp_in_tmp109;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp109;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp109;
     }
     Arr1DIdxRowM(tmp109, 512, i0) = (party == SERVER) ? __tmp_in_tmp109 : 0;
   }
@@ -3202,9 +3886,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp110
    * at (2260,1-2260,37) */
   uint64_t __tmp_in_tmp110;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp110;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp110;
     }
     Arr1DIdxRowM(tmp110, 512, i0) = (party == SERVER) ? __tmp_in_tmp110 : 0;
   }
@@ -3213,9 +3899,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp111
    * at (2263,1-2263,37) */
   uint64_t __tmp_in_tmp111;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp111;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp111;
     }
     Arr1DIdxRowM(tmp111, 512, i0) = (party == SERVER) ? __tmp_in_tmp111 : 0;
   }
@@ -3224,9 +3912,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp112
    * at (2266,1-2266,37) */
   uint64_t __tmp_in_tmp112;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp112;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp112;
     }
     Arr1DIdxRowM(tmp112, 512, i0) = (party == SERVER) ? __tmp_in_tmp112 : 0;
   }
@@ -3235,12 +3925,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp113
    * at (2269,1-2269,49) */
   uint64_t __tmp_in_tmp113;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp113;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp113;
           }
           Arr4DIdxRowM(tmp113, 1, 1, 512, 1024, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp113 : 0;
@@ -3253,12 +3948,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp114
    * at (2272,1-2272,48) */
   uint64_t __tmp_in_tmp114;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp114;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp114;
           }
           Arr4DIdxRowM(tmp114, 1, 1, 512, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp114 : 0;
@@ -3271,9 +3971,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp115
    * at (2275,1-2275,37) */
   uint64_t __tmp_in_tmp115;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp115;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp115;
     }
     Arr1DIdxRowM(tmp115, 256, i0) = (party == SERVER) ? __tmp_in_tmp115 : 0;
   }
@@ -3282,9 +3984,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp116
    * at (2278,1-2278,37) */
   uint64_t __tmp_in_tmp116;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp116;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp116;
     }
     Arr1DIdxRowM(tmp116, 256, i0) = (party == SERVER) ? __tmp_in_tmp116 : 0;
   }
@@ -3293,9 +3997,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp117
    * at (2281,1-2281,37) */
   uint64_t __tmp_in_tmp117;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp117;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp117;
     }
     Arr1DIdxRowM(tmp117, 256, i0) = (party == SERVER) ? __tmp_in_tmp117 : 0;
   }
@@ -3304,9 +4010,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp118
    * at (2284,1-2284,37) */
   uint64_t __tmp_in_tmp118;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp118;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp118;
     }
     Arr1DIdxRowM(tmp118, 256, i0) = (party == SERVER) ? __tmp_in_tmp118 : 0;
   }
@@ -3315,12 +4023,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp119
    * at (2287,1-2287,48) */
   uint64_t __tmp_in_tmp119;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp119;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp119;
           }
           Arr4DIdxRowM(tmp119, 3, 3, 256, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp119 : 0;
@@ -3333,9 +4046,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp120
    * at (2290,1-2290,37) */
   uint64_t __tmp_in_tmp120;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp120;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp120;
     }
     Arr1DIdxRowM(tmp120, 256, i0) = (party == SERVER) ? __tmp_in_tmp120 : 0;
   }
@@ -3344,9 +4059,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp121
    * at (2293,1-2293,37) */
   uint64_t __tmp_in_tmp121;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp121;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp121;
     }
     Arr1DIdxRowM(tmp121, 256, i0) = (party == SERVER) ? __tmp_in_tmp121 : 0;
   }
@@ -3355,9 +4072,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp122
    * at (2296,1-2296,37) */
   uint64_t __tmp_in_tmp122;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp122;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp122;
     }
     Arr1DIdxRowM(tmp122, 256, i0) = (party == SERVER) ? __tmp_in_tmp122 : 0;
   }
@@ -3366,9 +4085,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp123
    * at (2299,1-2299,37) */
   uint64_t __tmp_in_tmp123;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp123;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp123;
     }
     Arr1DIdxRowM(tmp123, 256, i0) = (party == SERVER) ? __tmp_in_tmp123 : 0;
   }
@@ -3377,12 +4098,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp124
    * at (2302,1-2302,49) */
   uint64_t __tmp_in_tmp124;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp124;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp124;
           }
           Arr4DIdxRowM(tmp124, 1, 1, 256, 1024, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp124 : 0;
@@ -3395,9 +4121,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp125
    * at (2305,1-2305,38) */
   uint64_t __tmp_in_tmp125;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp125;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp125;
     }
     Arr1DIdxRowM(tmp125, 1024, i0) = (party == SERVER) ? __tmp_in_tmp125 : 0;
   }
@@ -3406,9 +4134,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp126
    * at (2308,1-2308,38) */
   uint64_t __tmp_in_tmp126;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp126;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp126;
     }
     Arr1DIdxRowM(tmp126, 1024, i0) = (party == SERVER) ? __tmp_in_tmp126 : 0;
   }
@@ -3417,9 +4147,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp127
    * at (2311,1-2311,38) */
   uint64_t __tmp_in_tmp127;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp127;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp127;
     }
     Arr1DIdxRowM(tmp127, 1024, i0) = (party == SERVER) ? __tmp_in_tmp127 : 0;
   }
@@ -3428,9 +4160,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp128
    * at (2314,1-2314,38) */
   uint64_t __tmp_in_tmp128;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp128;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp128;
     }
     Arr1DIdxRowM(tmp128, 1024, i0) = (party == SERVER) ? __tmp_in_tmp128 : 0;
   }
@@ -3439,12 +4173,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp129
    * at (2317,1-2317,49) */
   uint64_t __tmp_in_tmp129;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp129;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp129;
           }
           Arr4DIdxRowM(tmp129, 1, 1, 1024, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp129 : 0;
@@ -3457,9 +4196,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp130
    * at (2320,1-2320,37) */
   uint64_t __tmp_in_tmp130;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp130;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp130;
     }
     Arr1DIdxRowM(tmp130, 256, i0) = (party == SERVER) ? __tmp_in_tmp130 : 0;
   }
@@ -3468,9 +4209,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp131
    * at (2323,1-2323,37) */
   uint64_t __tmp_in_tmp131;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp131;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp131;
     }
     Arr1DIdxRowM(tmp131, 256, i0) = (party == SERVER) ? __tmp_in_tmp131 : 0;
   }
@@ -3479,9 +4222,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp132
    * at (2326,1-2326,37) */
   uint64_t __tmp_in_tmp132;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp132;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp132;
     }
     Arr1DIdxRowM(tmp132, 256, i0) = (party == SERVER) ? __tmp_in_tmp132 : 0;
   }
@@ -3490,9 +4235,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp133
    * at (2329,1-2329,37) */
   uint64_t __tmp_in_tmp133;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp133;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp133;
     }
     Arr1DIdxRowM(tmp133, 256, i0) = (party == SERVER) ? __tmp_in_tmp133 : 0;
   }
@@ -3501,12 +4248,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp134
    * at (2332,1-2332,48) */
   uint64_t __tmp_in_tmp134;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp134;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp134;
           }
           Arr4DIdxRowM(tmp134, 3, 3, 256, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp134 : 0;
@@ -3519,9 +4271,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp135
    * at (2335,1-2335,37) */
   uint64_t __tmp_in_tmp135;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp135;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp135;
     }
     Arr1DIdxRowM(tmp135, 256, i0) = (party == SERVER) ? __tmp_in_tmp135 : 0;
   }
@@ -3530,9 +4284,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp136
    * at (2338,1-2338,37) */
   uint64_t __tmp_in_tmp136;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp136;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp136;
     }
     Arr1DIdxRowM(tmp136, 256, i0) = (party == SERVER) ? __tmp_in_tmp136 : 0;
   }
@@ -3541,9 +4297,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp137
    * at (2341,1-2341,37) */
   uint64_t __tmp_in_tmp137;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp137;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp137;
     }
     Arr1DIdxRowM(tmp137, 256, i0) = (party == SERVER) ? __tmp_in_tmp137 : 0;
   }
@@ -3552,9 +4310,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp138
    * at (2344,1-2344,37) */
   uint64_t __tmp_in_tmp138;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp138;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp138;
     }
     Arr1DIdxRowM(tmp138, 256, i0) = (party == SERVER) ? __tmp_in_tmp138 : 0;
   }
@@ -3563,12 +4323,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp139
    * at (2347,1-2347,49) */
   uint64_t __tmp_in_tmp139;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp139;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp139;
           }
           Arr4DIdxRowM(tmp139, 1, 1, 256, 1024, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp139 : 0;
@@ -3581,9 +4346,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp140
    * at (2350,1-2350,38) */
   uint64_t __tmp_in_tmp140;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp140;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp140;
     }
     Arr1DIdxRowM(tmp140, 1024, i0) = (party == SERVER) ? __tmp_in_tmp140 : 0;
   }
@@ -3592,9 +4359,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp141
    * at (2353,1-2353,38) */
   uint64_t __tmp_in_tmp141;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp141;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp141;
     }
     Arr1DIdxRowM(tmp141, 1024, i0) = (party == SERVER) ? __tmp_in_tmp141 : 0;
   }
@@ -3603,9 +4372,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp142
    * at (2356,1-2356,38) */
   uint64_t __tmp_in_tmp142;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp142;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp142;
     }
     Arr1DIdxRowM(tmp142, 1024, i0) = (party == SERVER) ? __tmp_in_tmp142 : 0;
   }
@@ -3614,9 +4385,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp143
    * at (2359,1-2359,38) */
   uint64_t __tmp_in_tmp143;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp143;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp143;
     }
     Arr1DIdxRowM(tmp143, 1024, i0) = (party == SERVER) ? __tmp_in_tmp143 : 0;
   }
@@ -3625,12 +4398,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp144
    * at (2362,1-2362,49) */
   uint64_t __tmp_in_tmp144;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp144;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp144;
           }
           Arr4DIdxRowM(tmp144, 1, 1, 1024, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp144 : 0;
@@ -3643,9 +4421,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp145
    * at (2365,1-2365,37) */
   uint64_t __tmp_in_tmp145;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp145;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp145;
     }
     Arr1DIdxRowM(tmp145, 256, i0) = (party == SERVER) ? __tmp_in_tmp145 : 0;
   }
@@ -3654,9 +4434,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp146
    * at (2368,1-2368,37) */
   uint64_t __tmp_in_tmp146;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp146;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp146;
     }
     Arr1DIdxRowM(tmp146, 256, i0) = (party == SERVER) ? __tmp_in_tmp146 : 0;
   }
@@ -3665,9 +4447,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp147
    * at (2371,1-2371,37) */
   uint64_t __tmp_in_tmp147;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp147;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp147;
     }
     Arr1DIdxRowM(tmp147, 256, i0) = (party == SERVER) ? __tmp_in_tmp147 : 0;
   }
@@ -3676,9 +4460,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp148
    * at (2374,1-2374,37) */
   uint64_t __tmp_in_tmp148;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp148;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp148;
     }
     Arr1DIdxRowM(tmp148, 256, i0) = (party == SERVER) ? __tmp_in_tmp148 : 0;
   }
@@ -3687,12 +4473,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp149
    * at (2377,1-2377,48) */
   uint64_t __tmp_in_tmp149;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp149;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp149;
           }
           Arr4DIdxRowM(tmp149, 3, 3, 256, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp149 : 0;
@@ -3705,9 +4496,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp150
    * at (2380,1-2380,37) */
   uint64_t __tmp_in_tmp150;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp150;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp150;
     }
     Arr1DIdxRowM(tmp150, 256, i0) = (party == SERVER) ? __tmp_in_tmp150 : 0;
   }
@@ -3716,9 +4509,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp151
    * at (2383,1-2383,37) */
   uint64_t __tmp_in_tmp151;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp151;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp151;
     }
     Arr1DIdxRowM(tmp151, 256, i0) = (party == SERVER) ? __tmp_in_tmp151 : 0;
   }
@@ -3727,9 +4522,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp152
    * at (2386,1-2386,37) */
   uint64_t __tmp_in_tmp152;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp152;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp152;
     }
     Arr1DIdxRowM(tmp152, 256, i0) = (party == SERVER) ? __tmp_in_tmp152 : 0;
   }
@@ -3738,9 +4535,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp153
    * at (2389,1-2389,37) */
   uint64_t __tmp_in_tmp153;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp153;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp153;
     }
     Arr1DIdxRowM(tmp153, 256, i0) = (party == SERVER) ? __tmp_in_tmp153 : 0;
   }
@@ -3749,12 +4548,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp154
    * at (2392,1-2392,49) */
   uint64_t __tmp_in_tmp154;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp154;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp154;
           }
           Arr4DIdxRowM(tmp154, 1, 1, 256, 1024, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp154 : 0;
@@ -3767,9 +4571,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp155
    * at (2395,1-2395,38) */
   uint64_t __tmp_in_tmp155;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp155;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp155;
     }
     Arr1DIdxRowM(tmp155, 1024, i0) = (party == SERVER) ? __tmp_in_tmp155 : 0;
   }
@@ -3778,9 +4584,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp156
    * at (2398,1-2398,38) */
   uint64_t __tmp_in_tmp156;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp156;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp156;
     }
     Arr1DIdxRowM(tmp156, 1024, i0) = (party == SERVER) ? __tmp_in_tmp156 : 0;
   }
@@ -3789,9 +4597,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp157
    * at (2401,1-2401,38) */
   uint64_t __tmp_in_tmp157;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp157;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp157;
     }
     Arr1DIdxRowM(tmp157, 1024, i0) = (party == SERVER) ? __tmp_in_tmp157 : 0;
   }
@@ -3800,9 +4610,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp158
    * at (2404,1-2404,38) */
   uint64_t __tmp_in_tmp158;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp158;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp158;
     }
     Arr1DIdxRowM(tmp158, 1024, i0) = (party == SERVER) ? __tmp_in_tmp158 : 0;
   }
@@ -3811,12 +4623,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp159
    * at (2407,1-2407,49) */
   uint64_t __tmp_in_tmp159;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp159;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp159;
           }
           Arr4DIdxRowM(tmp159, 1, 1, 1024, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp159 : 0;
@@ -3829,9 +4646,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp160
    * at (2410,1-2410,37) */
   uint64_t __tmp_in_tmp160;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp160;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp160;
     }
     Arr1DIdxRowM(tmp160, 256, i0) = (party == SERVER) ? __tmp_in_tmp160 : 0;
   }
@@ -3840,9 +4659,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp161
    * at (2413,1-2413,37) */
   uint64_t __tmp_in_tmp161;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp161;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp161;
     }
     Arr1DIdxRowM(tmp161, 256, i0) = (party == SERVER) ? __tmp_in_tmp161 : 0;
   }
@@ -3851,9 +4672,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp162
    * at (2416,1-2416,37) */
   uint64_t __tmp_in_tmp162;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp162;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp162;
     }
     Arr1DIdxRowM(tmp162, 256, i0) = (party == SERVER) ? __tmp_in_tmp162 : 0;
   }
@@ -3862,9 +4685,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp163
    * at (2419,1-2419,37) */
   uint64_t __tmp_in_tmp163;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp163;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp163;
     }
     Arr1DIdxRowM(tmp163, 256, i0) = (party == SERVER) ? __tmp_in_tmp163 : 0;
   }
@@ -3873,12 +4698,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp164
    * at (2422,1-2422,48) */
   uint64_t __tmp_in_tmp164;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp164;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp164;
           }
           Arr4DIdxRowM(tmp164, 3, 3, 256, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp164 : 0;
@@ -3891,9 +4721,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp165
    * at (2425,1-2425,37) */
   uint64_t __tmp_in_tmp165;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp165;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp165;
     }
     Arr1DIdxRowM(tmp165, 256, i0) = (party == SERVER) ? __tmp_in_tmp165 : 0;
   }
@@ -3902,9 +4734,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp166
    * at (2428,1-2428,37) */
   uint64_t __tmp_in_tmp166;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp166;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp166;
     }
     Arr1DIdxRowM(tmp166, 256, i0) = (party == SERVER) ? __tmp_in_tmp166 : 0;
   }
@@ -3913,9 +4747,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp167
    * at (2431,1-2431,37) */
   uint64_t __tmp_in_tmp167;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp167;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp167;
     }
     Arr1DIdxRowM(tmp167, 256, i0) = (party == SERVER) ? __tmp_in_tmp167 : 0;
   }
@@ -3924,9 +4760,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp168
    * at (2434,1-2434,37) */
   uint64_t __tmp_in_tmp168;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp168;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp168;
     }
     Arr1DIdxRowM(tmp168, 256, i0) = (party == SERVER) ? __tmp_in_tmp168 : 0;
   }
@@ -3935,12 +4773,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp169
    * at (2437,1-2437,49) */
   uint64_t __tmp_in_tmp169;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp169;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp169;
           }
           Arr4DIdxRowM(tmp169, 1, 1, 256, 1024, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp169 : 0;
@@ -3953,9 +4796,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp170
    * at (2440,1-2440,38) */
   uint64_t __tmp_in_tmp170;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp170;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp170;
     }
     Arr1DIdxRowM(tmp170, 1024, i0) = (party == SERVER) ? __tmp_in_tmp170 : 0;
   }
@@ -3964,9 +4809,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp171
    * at (2443,1-2443,38) */
   uint64_t __tmp_in_tmp171;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp171;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp171;
     }
     Arr1DIdxRowM(tmp171, 1024, i0) = (party == SERVER) ? __tmp_in_tmp171 : 0;
   }
@@ -3975,9 +4822,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp172
    * at (2446,1-2446,38) */
   uint64_t __tmp_in_tmp172;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp172;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp172;
     }
     Arr1DIdxRowM(tmp172, 1024, i0) = (party == SERVER) ? __tmp_in_tmp172 : 0;
   }
@@ -3986,9 +4835,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp173
    * at (2449,1-2449,38) */
   uint64_t __tmp_in_tmp173;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp173;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp173;
     }
     Arr1DIdxRowM(tmp173, 1024, i0) = (party == SERVER) ? __tmp_in_tmp173 : 0;
   }
@@ -3997,12 +4848,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp174
    * at (2452,1-2452,49) */
   uint64_t __tmp_in_tmp174;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp174;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp174;
           }
           Arr4DIdxRowM(tmp174, 1, 1, 1024, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp174 : 0;
@@ -4015,9 +4871,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp175
    * at (2455,1-2455,37) */
   uint64_t __tmp_in_tmp175;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp175;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp175;
     }
     Arr1DIdxRowM(tmp175, 256, i0) = (party == SERVER) ? __tmp_in_tmp175 : 0;
   }
@@ -4026,9 +4884,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp176
    * at (2458,1-2458,37) */
   uint64_t __tmp_in_tmp176;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp176;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp176;
     }
     Arr1DIdxRowM(tmp176, 256, i0) = (party == SERVER) ? __tmp_in_tmp176 : 0;
   }
@@ -4037,9 +4897,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp177
    * at (2461,1-2461,37) */
   uint64_t __tmp_in_tmp177;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp177;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp177;
     }
     Arr1DIdxRowM(tmp177, 256, i0) = (party == SERVER) ? __tmp_in_tmp177 : 0;
   }
@@ -4048,9 +4910,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp178
    * at (2464,1-2464,37) */
   uint64_t __tmp_in_tmp178;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp178;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp178;
     }
     Arr1DIdxRowM(tmp178, 256, i0) = (party == SERVER) ? __tmp_in_tmp178 : 0;
   }
@@ -4059,12 +4923,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp179
    * at (2467,1-2467,48) */
   uint64_t __tmp_in_tmp179;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp179;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp179;
           }
           Arr4DIdxRowM(tmp179, 3, 3, 256, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp179 : 0;
@@ -4077,9 +4946,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp180
    * at (2470,1-2470,37) */
   uint64_t __tmp_in_tmp180;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp180;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp180;
     }
     Arr1DIdxRowM(tmp180, 256, i0) = (party == SERVER) ? __tmp_in_tmp180 : 0;
   }
@@ -4088,9 +4959,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp181
    * at (2473,1-2473,37) */
   uint64_t __tmp_in_tmp181;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp181;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp181;
     }
     Arr1DIdxRowM(tmp181, 256, i0) = (party == SERVER) ? __tmp_in_tmp181 : 0;
   }
@@ -4099,9 +4972,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp182
    * at (2476,1-2476,37) */
   uint64_t __tmp_in_tmp182;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp182;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp182;
     }
     Arr1DIdxRowM(tmp182, 256, i0) = (party == SERVER) ? __tmp_in_tmp182 : 0;
   }
@@ -4110,9 +4985,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp183
    * at (2479,1-2479,37) */
   uint64_t __tmp_in_tmp183;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp183;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp183;
     }
     Arr1DIdxRowM(tmp183, 256, i0) = (party == SERVER) ? __tmp_in_tmp183 : 0;
   }
@@ -4121,12 +4998,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp184
    * at (2482,1-2482,49) */
   uint64_t __tmp_in_tmp184;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp184;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp184;
           }
           Arr4DIdxRowM(tmp184, 1, 1, 256, 1024, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp184 : 0;
@@ -4139,9 +5021,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp185
    * at (2485,1-2485,38) */
   uint64_t __tmp_in_tmp185;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp185;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp185;
     }
     Arr1DIdxRowM(tmp185, 1024, i0) = (party == SERVER) ? __tmp_in_tmp185 : 0;
   }
@@ -4150,9 +5034,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp186
    * at (2488,1-2488,38) */
   uint64_t __tmp_in_tmp186;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp186;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp186;
     }
     Arr1DIdxRowM(tmp186, 1024, i0) = (party == SERVER) ? __tmp_in_tmp186 : 0;
   }
@@ -4161,9 +5047,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp187
    * at (2491,1-2491,38) */
   uint64_t __tmp_in_tmp187;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp187;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp187;
     }
     Arr1DIdxRowM(tmp187, 1024, i0) = (party == SERVER) ? __tmp_in_tmp187 : 0;
   }
@@ -4172,9 +5060,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp188
    * at (2494,1-2494,38) */
   uint64_t __tmp_in_tmp188;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp188;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp188;
     }
     Arr1DIdxRowM(tmp188, 1024, i0) = (party == SERVER) ? __tmp_in_tmp188 : 0;
   }
@@ -4183,12 +5073,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp189
    * at (2497,1-2497,49) */
   uint64_t __tmp_in_tmp189;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp189;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp189;
           }
           Arr4DIdxRowM(tmp189, 1, 1, 1024, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp189 : 0;
@@ -4201,9 +5096,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp190
    * at (2500,1-2500,37) */
   uint64_t __tmp_in_tmp190;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp190;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp190;
     }
     Arr1DIdxRowM(tmp190, 256, i0) = (party == SERVER) ? __tmp_in_tmp190 : 0;
   }
@@ -4212,9 +5109,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp191
    * at (2503,1-2503,37) */
   uint64_t __tmp_in_tmp191;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp191;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp191;
     }
     Arr1DIdxRowM(tmp191, 256, i0) = (party == SERVER) ? __tmp_in_tmp191 : 0;
   }
@@ -4223,9 +5122,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp192
    * at (2506,1-2506,37) */
   uint64_t __tmp_in_tmp192;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp192;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp192;
     }
     Arr1DIdxRowM(tmp192, 256, i0) = (party == SERVER) ? __tmp_in_tmp192 : 0;
   }
@@ -4234,9 +5135,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp193
    * at (2509,1-2509,37) */
   uint64_t __tmp_in_tmp193;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp193;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp193;
     }
     Arr1DIdxRowM(tmp193, 256, i0) = (party == SERVER) ? __tmp_in_tmp193 : 0;
   }
@@ -4245,12 +5148,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp194
    * at (2512,1-2512,48) */
   uint64_t __tmp_in_tmp194;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp194;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 256; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp194;
           }
           Arr4DIdxRowM(tmp194, 3, 3, 256, 256, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp194 : 0;
@@ -4263,9 +5171,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp195
    * at (2515,1-2515,37) */
   uint64_t __tmp_in_tmp195;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp195;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp195;
     }
     Arr1DIdxRowM(tmp195, 256, i0) = (party == SERVER) ? __tmp_in_tmp195 : 0;
   }
@@ -4274,9 +5184,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp196
    * at (2518,1-2518,37) */
   uint64_t __tmp_in_tmp196;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp196;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp196;
     }
     Arr1DIdxRowM(tmp196, 256, i0) = (party == SERVER) ? __tmp_in_tmp196 : 0;
   }
@@ -4285,9 +5197,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp197
    * at (2521,1-2521,37) */
   uint64_t __tmp_in_tmp197;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp197;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp197;
     }
     Arr1DIdxRowM(tmp197, 256, i0) = (party == SERVER) ? __tmp_in_tmp197 : 0;
   }
@@ -4296,9 +5210,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp198
    * at (2524,1-2524,37) */
   uint64_t __tmp_in_tmp198;
-  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp198;
+  for (uint64_t i0 = (uint64_t)0; i0 < 256; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp198;
     }
     Arr1DIdxRowM(tmp198, 256, i0) = (party == SERVER) ? __tmp_in_tmp198 : 0;
   }
@@ -4307,12 +5223,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp199
    * at (2527,1-2527,49) */
   uint64_t __tmp_in_tmp199;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp199;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 256; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 1024; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp199;
           }
           Arr4DIdxRowM(tmp199, 1, 1, 256, 1024, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp199 : 0;
@@ -4325,9 +5246,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp200
    * at (2530,1-2530,38) */
   uint64_t __tmp_in_tmp200;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp200;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp200;
     }
     Arr1DIdxRowM(tmp200, 1024, i0) = (party == SERVER) ? __tmp_in_tmp200 : 0;
   }
@@ -4336,9 +5259,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp201
    * at (2533,1-2533,38) */
   uint64_t __tmp_in_tmp201;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp201;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp201;
     }
     Arr1DIdxRowM(tmp201, 1024, i0) = (party == SERVER) ? __tmp_in_tmp201 : 0;
   }
@@ -4347,9 +5272,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp202
    * at (2536,1-2536,38) */
   uint64_t __tmp_in_tmp202;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp202;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp202;
     }
     Arr1DIdxRowM(tmp202, 1024, i0) = (party == SERVER) ? __tmp_in_tmp202 : 0;
   }
@@ -4358,9 +5285,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp203
    * at (2539,1-2539,38) */
   uint64_t __tmp_in_tmp203;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp203;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1024; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp203;
     }
     Arr1DIdxRowM(tmp203, 1024, i0) = (party == SERVER) ? __tmp_in_tmp203 : 0;
   }
@@ -4369,12 +5298,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp204
    * at (2542,1-2542,50) */
   uint64_t __tmp_in_tmp204;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 2048; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp204;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 2048; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp204;
           }
           Arr4DIdxRowM(tmp204, 1, 1, 1024, 2048, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp204 : 0;
@@ -4387,12 +5321,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp205
    * at (2545,1-2545,49) */
   uint64_t __tmp_in_tmp205;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp205;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 1024; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp205;
           }
           Arr4DIdxRowM(tmp205, 1, 1, 1024, 512, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp205 : 0;
@@ -4405,9 +5344,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp206
    * at (2548,1-2548,37) */
   uint64_t __tmp_in_tmp206;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp206;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp206;
     }
     Arr1DIdxRowM(tmp206, 512, i0) = (party == SERVER) ? __tmp_in_tmp206 : 0;
   }
@@ -4416,9 +5357,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp207
    * at (2551,1-2551,37) */
   uint64_t __tmp_in_tmp207;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp207;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp207;
     }
     Arr1DIdxRowM(tmp207, 512, i0) = (party == SERVER) ? __tmp_in_tmp207 : 0;
   }
@@ -4427,9 +5370,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp208
    * at (2554,1-2554,37) */
   uint64_t __tmp_in_tmp208;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp208;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp208;
     }
     Arr1DIdxRowM(tmp208, 512, i0) = (party == SERVER) ? __tmp_in_tmp208 : 0;
   }
@@ -4438,9 +5383,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp209
    * at (2557,1-2557,37) */
   uint64_t __tmp_in_tmp209;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp209;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp209;
     }
     Arr1DIdxRowM(tmp209, 512, i0) = (party == SERVER) ? __tmp_in_tmp209 : 0;
   }
@@ -4449,12 +5396,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp210
    * at (2560,1-2560,48) */
   uint64_t __tmp_in_tmp210;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp210;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp210;
           }
           Arr4DIdxRowM(tmp210, 3, 3, 512, 512, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp210 : 0;
@@ -4467,9 +5419,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp211
    * at (2563,1-2563,37) */
   uint64_t __tmp_in_tmp211;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp211;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp211;
     }
     Arr1DIdxRowM(tmp211, 512, i0) = (party == SERVER) ? __tmp_in_tmp211 : 0;
   }
@@ -4478,9 +5432,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp212
    * at (2566,1-2566,37) */
   uint64_t __tmp_in_tmp212;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp212;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp212;
     }
     Arr1DIdxRowM(tmp212, 512, i0) = (party == SERVER) ? __tmp_in_tmp212 : 0;
   }
@@ -4489,9 +5445,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp213
    * at (2569,1-2569,37) */
   uint64_t __tmp_in_tmp213;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp213;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp213;
     }
     Arr1DIdxRowM(tmp213, 512, i0) = (party == SERVER) ? __tmp_in_tmp213 : 0;
   }
@@ -4500,9 +5458,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp214
    * at (2572,1-2572,37) */
   uint64_t __tmp_in_tmp214;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp214;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp214;
     }
     Arr1DIdxRowM(tmp214, 512, i0) = (party == SERVER) ? __tmp_in_tmp214 : 0;
   }
@@ -4511,12 +5471,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp215
    * at (2575,1-2575,49) */
   uint64_t __tmp_in_tmp215;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 2048; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp215;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 2048; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp215;
           }
           Arr4DIdxRowM(tmp215, 1, 1, 512, 2048, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp215 : 0;
@@ -4529,9 +5494,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp216
    * at (2578,1-2578,38) */
   uint64_t __tmp_in_tmp216;
-  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp216;
+  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp216;
     }
     Arr1DIdxRowM(tmp216, 2048, i0) = (party == SERVER) ? __tmp_in_tmp216 : 0;
   }
@@ -4540,9 +5507,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp217
    * at (2581,1-2581,38) */
   uint64_t __tmp_in_tmp217;
-  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp217;
+  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp217;
     }
     Arr1DIdxRowM(tmp217, 2048, i0) = (party == SERVER) ? __tmp_in_tmp217 : 0;
   }
@@ -4551,9 +5520,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp218
    * at (2584,1-2584,38) */
   uint64_t __tmp_in_tmp218;
-  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp218;
+  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp218;
     }
     Arr1DIdxRowM(tmp218, 2048, i0) = (party == SERVER) ? __tmp_in_tmp218 : 0;
   }
@@ -4562,9 +5533,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp219
    * at (2587,1-2587,38) */
   uint64_t __tmp_in_tmp219;
-  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp219;
+  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp219;
     }
     Arr1DIdxRowM(tmp219, 2048, i0) = (party == SERVER) ? __tmp_in_tmp219 : 0;
   }
@@ -4573,12 +5546,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp220
    * at (2590,1-2590,49) */
   uint64_t __tmp_in_tmp220;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 2048; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp220;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 2048; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp220;
           }
           Arr4DIdxRowM(tmp220, 1, 1, 2048, 512, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp220 : 0;
@@ -4591,9 +5569,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp221
    * at (2593,1-2593,37) */
   uint64_t __tmp_in_tmp221;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp221;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp221;
     }
     Arr1DIdxRowM(tmp221, 512, i0) = (party == SERVER) ? __tmp_in_tmp221 : 0;
   }
@@ -4602,9 +5582,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp222
    * at (2596,1-2596,37) */
   uint64_t __tmp_in_tmp222;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp222;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp222;
     }
     Arr1DIdxRowM(tmp222, 512, i0) = (party == SERVER) ? __tmp_in_tmp222 : 0;
   }
@@ -4613,9 +5595,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp223
    * at (2599,1-2599,37) */
   uint64_t __tmp_in_tmp223;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp223;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp223;
     }
     Arr1DIdxRowM(tmp223, 512, i0) = (party == SERVER) ? __tmp_in_tmp223 : 0;
   }
@@ -4624,9 +5608,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp224
    * at (2602,1-2602,37) */
   uint64_t __tmp_in_tmp224;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp224;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp224;
     }
     Arr1DIdxRowM(tmp224, 512, i0) = (party == SERVER) ? __tmp_in_tmp224 : 0;
   }
@@ -4635,12 +5621,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp225
    * at (2605,1-2605,48) */
   uint64_t __tmp_in_tmp225;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp225;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp225;
           }
           Arr4DIdxRowM(tmp225, 3, 3, 512, 512, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp225 : 0;
@@ -4653,9 +5644,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp226
    * at (2608,1-2608,37) */
   uint64_t __tmp_in_tmp226;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp226;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp226;
     }
     Arr1DIdxRowM(tmp226, 512, i0) = (party == SERVER) ? __tmp_in_tmp226 : 0;
   }
@@ -4664,9 +5657,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp227
    * at (2611,1-2611,37) */
   uint64_t __tmp_in_tmp227;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp227;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp227;
     }
     Arr1DIdxRowM(tmp227, 512, i0) = (party == SERVER) ? __tmp_in_tmp227 : 0;
   }
@@ -4675,9 +5670,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp228
    * at (2614,1-2614,37) */
   uint64_t __tmp_in_tmp228;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp228;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp228;
     }
     Arr1DIdxRowM(tmp228, 512, i0) = (party == SERVER) ? __tmp_in_tmp228 : 0;
   }
@@ -4686,9 +5683,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp229
    * at (2617,1-2617,37) */
   uint64_t __tmp_in_tmp229;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp229;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp229;
     }
     Arr1DIdxRowM(tmp229, 512, i0) = (party == SERVER) ? __tmp_in_tmp229 : 0;
   }
@@ -4697,12 +5696,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp230
    * at (2620,1-2620,49) */
   uint64_t __tmp_in_tmp230;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 2048; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp230;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 2048; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp230;
           }
           Arr4DIdxRowM(tmp230, 1, 1, 512, 2048, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp230 : 0;
@@ -4715,9 +5719,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp231
    * at (2623,1-2623,38) */
   uint64_t __tmp_in_tmp231;
-  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp231;
+  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp231;
     }
     Arr1DIdxRowM(tmp231, 2048, i0) = (party == SERVER) ? __tmp_in_tmp231 : 0;
   }
@@ -4726,9 +5732,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp232
    * at (2626,1-2626,38) */
   uint64_t __tmp_in_tmp232;
-  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp232;
+  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp232;
     }
     Arr1DIdxRowM(tmp232, 2048, i0) = (party == SERVER) ? __tmp_in_tmp232 : 0;
   }
@@ -4737,9 +5745,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp233
    * at (2629,1-2629,38) */
   uint64_t __tmp_in_tmp233;
-  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp233;
+  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp233;
     }
     Arr1DIdxRowM(tmp233, 2048, i0) = (party == SERVER) ? __tmp_in_tmp233 : 0;
   }
@@ -4748,9 +5758,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp234
    * at (2632,1-2632,38) */
   uint64_t __tmp_in_tmp234;
-  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp234;
+  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp234;
     }
     Arr1DIdxRowM(tmp234, 2048, i0) = (party == SERVER) ? __tmp_in_tmp234 : 0;
   }
@@ -4759,12 +5771,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp235
    * at (2635,1-2635,49) */
   uint64_t __tmp_in_tmp235;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 2048; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp235;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 2048; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp235;
           }
           Arr4DIdxRowM(tmp235, 1, 1, 2048, 512, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp235 : 0;
@@ -4777,9 +5794,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp236
    * at (2638,1-2638,37) */
   uint64_t __tmp_in_tmp236;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp236;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp236;
     }
     Arr1DIdxRowM(tmp236, 512, i0) = (party == SERVER) ? __tmp_in_tmp236 : 0;
   }
@@ -4788,9 +5807,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp237
    * at (2641,1-2641,37) */
   uint64_t __tmp_in_tmp237;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp237;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp237;
     }
     Arr1DIdxRowM(tmp237, 512, i0) = (party == SERVER) ? __tmp_in_tmp237 : 0;
   }
@@ -4799,9 +5820,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp238
    * at (2644,1-2644,37) */
   uint64_t __tmp_in_tmp238;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp238;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp238;
     }
     Arr1DIdxRowM(tmp238, 512, i0) = (party == SERVER) ? __tmp_in_tmp238 : 0;
   }
@@ -4810,9 +5833,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp239
    * at (2647,1-2647,37) */
   uint64_t __tmp_in_tmp239;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp239;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp239;
     }
     Arr1DIdxRowM(tmp239, 512, i0) = (party == SERVER) ? __tmp_in_tmp239 : 0;
   }
@@ -4821,12 +5846,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp240
    * at (2650,1-2650,48) */
   uint64_t __tmp_in_tmp240;
-  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp240;
+  for (uint64_t i0 = (uint64_t)0; i0 < 3; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 3; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 512; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp240;
           }
           Arr4DIdxRowM(tmp240, 3, 3, 512, 512, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp240 : 0;
@@ -4839,9 +5869,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp241
    * at (2653,1-2653,37) */
   uint64_t __tmp_in_tmp241;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp241;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp241;
     }
     Arr1DIdxRowM(tmp241, 512, i0) = (party == SERVER) ? __tmp_in_tmp241 : 0;
   }
@@ -4850,9 +5882,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp242
    * at (2656,1-2656,37) */
   uint64_t __tmp_in_tmp242;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp242;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp242;
     }
     Arr1DIdxRowM(tmp242, 512, i0) = (party == SERVER) ? __tmp_in_tmp242 : 0;
   }
@@ -4861,9 +5895,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp243
    * at (2659,1-2659,37) */
   uint64_t __tmp_in_tmp243;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp243;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp243;
     }
     Arr1DIdxRowM(tmp243, 512, i0) = (party == SERVER) ? __tmp_in_tmp243 : 0;
   }
@@ -4872,9 +5908,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp244
    * at (2662,1-2662,37) */
   uint64_t __tmp_in_tmp244;
-  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp244;
+  for (uint64_t i0 = (uint64_t)0; i0 < 512; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp244;
     }
     Arr1DIdxRowM(tmp244, 512, i0) = (party == SERVER) ? __tmp_in_tmp244 : 0;
   }
@@ -4883,12 +5921,17 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp245
    * at (2665,1-2665,49) */
   uint64_t __tmp_in_tmp245;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++) {
-      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++) {
-        for (uint64_t i3 = (uint64_t)0; i3 < 2048; i3++) {
-          if (party == SERVER) {
-            gINPUT>> __tmp_in_tmp245;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1; i1++)
+    {
+      for (uint64_t i2 = (uint64_t)0; i2 < 512; i2++)
+      {
+        for (uint64_t i3 = (uint64_t)0; i3 < 2048; i3++)
+        {
+          if (party == SERVER)
+          {
+            gINPUT >> __tmp_in_tmp245;
           }
           Arr4DIdxRowM(tmp245, 1, 1, 512, 2048, i0, i1, i2, i3) =
               (party == SERVER) ? __tmp_in_tmp245 : 0;
@@ -4901,9 +5944,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp246
    * at (2668,1-2668,38) */
   uint64_t __tmp_in_tmp246;
-  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp246;
+  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp246;
     }
     Arr1DIdxRowM(tmp246, 2048, i0) = (party == SERVER) ? __tmp_in_tmp246 : 0;
   }
@@ -4912,9 +5957,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp247
    * at (2671,1-2671,38) */
   uint64_t __tmp_in_tmp247;
-  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp247;
+  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp247;
     }
     Arr1DIdxRowM(tmp247, 2048, i0) = (party == SERVER) ? __tmp_in_tmp247 : 0;
   }
@@ -4923,9 +5970,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp248
    * at (2674,1-2674,38) */
   uint64_t __tmp_in_tmp248;
-  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp248;
+  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp248;
     }
     Arr1DIdxRowM(tmp248, 2048, i0) = (party == SERVER) ? __tmp_in_tmp248 : 0;
   }
@@ -4934,9 +5983,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp249
    * at (2677,1-2677,38) */
   uint64_t __tmp_in_tmp249;
-  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp249;
+  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp249;
     }
     Arr1DIdxRowM(tmp249, 2048, i0) = (party == SERVER) ? __tmp_in_tmp249 : 0;
   }
@@ -4945,10 +5996,13 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp250
    * at (2680,1-2680,44) */
   uint64_t __tmp_in_tmp250;
-  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++) {
-    for (uint64_t i1 = (uint64_t)0; i1 < 1001; i1++) {
-      if (party == SERVER) {
-        gINPUT>> __tmp_in_tmp250;
+  for (uint64_t i0 = (uint64_t)0; i0 < 2048; i0++)
+  {
+    for (uint64_t i1 = (uint64_t)0; i1 < 1001; i1++)
+    {
+      if (party == SERVER)
+      {
+        gINPUT >> __tmp_in_tmp250;
       }
       Arr2DIdxRowM(tmp250, 2048, 1001, i0, i1) =
           (party == SERVER) ? __tmp_in_tmp250 : 0;
@@ -4959,9 +6013,11 @@ int main(int argc, char **argv) {
   /* Variable to read the clear value corresponding to the input variable tmp251
    * at (2683,1-2683,38) */
   uint64_t __tmp_in_tmp251;
-  for (uint64_t i0 = (uint64_t)0; i0 < 1001; i0++) {
-    if (party == SERVER) {
-      gINPUT>> __tmp_in_tmp251;
+  for (uint64_t i0 = (uint64_t)0; i0 < 1001; i0++)
+  {
+    if (party == SERVER)
+    {
+      gINPUT >> __tmp_in_tmp251;
     }
     Arr1DIdxRowM(tmp251, 1001, i0) = (party == SERVER) ? __tmp_in_tmp251 : 0;
   }
@@ -6364,27 +7420,33 @@ int main(int argc, char **argv) {
   EndComputation();
 
   std::vector<double> prediction_vector(1001);
-  for (uint64_t i0 = 0; i0 < 1001; i0++) {
-	prediction_vector[i0] = funcReconstruct2PCCons(Arr1DIdxRowM(tmp776, 1001, i0), 2) / 
-	  std::pow(4., kScale);
+  for (uint64_t i0 = 0; i0 < 1001; i0++)
+  {
+    prediction_vector[i0] = funcReconstruct2PCCons(Arr1DIdxRowM(tmp776, 1001, i0), 2) /
+                            std::pow(4., kScale);
   }
   ClearMemSecret2(1, 1001, tmp776);
-  if (party == CLIENT) {
-	std::sort(prediction_vector.begin(), prediction_vector.end(), 
-			  [](double u, double v) { return u > v; });
-	printf("top-10 values from ResNet50\n");
-	printf("[");
-	for (uint64_t i = 0; i < 10; ++i) {
-	  printf("%.7f,", prediction_vector[i]);
-	}
-	printf("]\n");
+  if (party == CLIENT)
+  {
+    std::sort(prediction_vector.begin(), prediction_vector.end(),
+              [](double u, double v)
+              { return u > v; });
+    printf("top-10 values from ResNet50\n");
+    printf("[");
+    for (uint64_t i = 0; i < 10; ++i)
+    {
+      printf("%.7f,", prediction_vector[i]);
+    }
+    printf("]\n");
   }
 
-  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++) {
+  for (uint64_t i0 = (uint64_t)0; i0 < 1; i0++)
+  {
     auto pred = funcReconstruct2PCCons(Arr1DIdxRowM(tmp780, 1, i0), 2);
-    if (party == CLIENT) {
-	  printf("predicted label=%lld\n", pred);
-	}
+    if (party == CLIENT)
+    {
+      printf("predicted label=%lld\n", pred);
+    }
   }
 
   finalize();

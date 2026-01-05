@@ -52,7 +52,7 @@ SOFTWARE.
 
 // #define MULTI_THREADING
 
-#define MAX_THREADS 4
+#define MAX_THREADS 16
 
 extern sci::NetIO *io;
 extern sci::OTPack<sci::NetIO> *otpack;
