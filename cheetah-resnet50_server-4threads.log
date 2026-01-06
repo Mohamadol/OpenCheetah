@@ -1,0 +1,820 @@
+Using Eigen for Matmul
+Doing BaseOT ...
+using silent ot pack
+using silent ot pack
+using silent ot pack
+using silent ot pack
+After one-time setup, communication
+Thread i = 0, total data sent till now = 1748076
+Thread i = 1, total data sent till now = 1726247
+Thread i = 2, total data sent till now = 1726247
+Thread i = 3, total data sent till now = 1726247
+-----------Syncronizing-----------
+secret_share_mod: 137438953472 bitlength: 37
+backend: Ring-SilentOT-Cheetah
+-----------Syncronized - now starting execution-----------
+HomConv #1 called N=1, H=230, W=230, CI=3, FH=7, FW=7, CO=64, S=2, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1148.17 ms
+  [io]   CONV sent                   49.6936 MiB
+Time in sec for current conv = [1.148] sent [49.6936] MB
+Maxpool 1 called N=1, H=56, W=56, C=64, ksizeH=3, ksizeW=3
+Time in sec for current maxpool = 4.479
+Truncate #1 on 200704 points by 12 bits
+HomBN #1 on shape [64, 56, 56]
+Time in sec for current BN = [0.106] sent [3.09864] MB
+
+Stage: ReLU+Rq
+Relu #1 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 1.33
+  [time] TOTAL                       1339.11 ms
+HomConv #2 called N=1, H=56, W=56, CI=64, FH=1, FW=1, CO=256, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       481.445 ms
+  [io]   CONV sent                   12.3931 MiB
+Time in sec for current conv = [0.481] sent [12.3931] MB
+HomConv #3 called N=1, H=56, W=56, CI=64, FH=1, FW=1, CO=64, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       192.282 ms
+  [io]   CONV sent                   3.09824 MiB
+Time in sec for current conv = [0.192] sent [3.09824] MB
+
+Stage: ReLU+Rq
+Relu #3 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.207
+  [time] TOTAL                       215.926 ms
+HomConv #4 called N=1, H=56, W=56, CI=64, FH=3, FW=3, CO=64, S=1, Padding SAME (1 1 1 1)
+
+Stage: HE-CONV
+  [time] TOTAL                       398.56 ms
+  [io]   CONV sent                   3.10336 MiB
+Time in sec for current conv = [0.398] sent [3.10336] MB
+
+Stage: ReLU+Rq
+Relu #5 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.195
+  [time] TOTAL                       203.866 ms
+HomConv #5 called N=1, H=56, W=56, CI=64, FH=1, FW=1, CO=256, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       431.051 ms
+  [io]   CONV sent                   12.3935 MiB
+Time in sec for current conv = [0.431] sent [12.3935] MB
+Truncate #2 on 802816 points by 12 bits
+HomBN #2 on shape [256, 56, 56]
+Time in sec for current BN = [0.421] sent [12.3937] MB
+
+Stage: ReLU+Rq
+Relu #7 on 802816 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.851
+  [time] TOTAL                       884.561 ms
+HomConv #6 called N=1, H=56, W=56, CI=256, FH=1, FW=1, CO=64, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       455.314 ms
+  [io]   CONV sent                   3.09863 MiB
+Time in sec for current conv = [0.455] sent [3.09863] MB
+
+Stage: ReLU+Rq
+Relu #9 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.187
+  [time] TOTAL                       196.343 ms
+HomConv #7 called N=1, H=56, W=56, CI=64, FH=3, FW=3, CO=64, S=1, Padding SAME (1 1 1 1)
+
+Stage: HE-CONV
+  [time] TOTAL                       398.621 ms
+  [io]   CONV sent                   3.10389 MiB
+Time in sec for current conv = [0.398] sent [3.10389] MB
+
+Stage: ReLU+Rq
+Relu #11 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 1.36
+  [time] TOTAL                       1369.24 ms
+HomConv #8 called N=1, H=56, W=56, CI=64, FH=1, FW=1, CO=256, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       425.357 ms
+  [io]   CONV sent                   12.3933 MiB
+Time in sec for current conv = [0.425] sent [12.3933] MB
+Truncate #3 on 802816 points by 12 bits
+HomBN #3 on shape [256, 56, 56]
+Time in sec for current BN = [0.392] sent [12.3931] MB
+
+Stage: ReLU+Rq
+Relu #13 on 802816 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.835
+  [time] TOTAL                       869.608 ms
+HomConv #9 called N=1, H=56, W=56, CI=256, FH=1, FW=1, CO=64, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       444.456 ms
+  [io]   CONV sent                   3.09832 MiB
+Time in sec for current conv = [0.444] sent [3.09832] MB
+
+Stage: ReLU+Rq
+Relu #15 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.188
+  [time] TOTAL                       196.771 ms
+HomConv #10 called N=1, H=56, W=56, CI=64, FH=3, FW=3, CO=64, S=1, Padding SAME (1 1 1 1)
+
+Stage: HE-CONV
+  [time] TOTAL                       397.06 ms
+  [io]   CONV sent                   3.10379 MiB
+Time in sec for current conv = [0.397] sent [3.10379] MB
+
+Stage: ReLU+Rq
+Relu #17 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.186
+  [time] TOTAL                       195.302 ms
+HomConv #11 called N=1, H=56, W=56, CI=64, FH=1, FW=1, CO=256, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       411.332 ms
+  [io]   CONV sent                   12.3936 MiB
+Time in sec for current conv = [0.411] sent [12.3936] MB
+Truncate #4 on 802816 points by 12 bits
+HomBN #4 on shape [256, 56, 56]
+Time in sec for current BN = [0.392] sent [12.3938] MB
+
+Stage: ReLU+Rq
+Relu #19 on 802816 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 1.945
+  [time] TOTAL                       1980.29 ms
+HomConv #12 called N=1, H=56, W=56, CI=256, FH=1, FW=1, CO=512, S=2, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       2199.65 ms
+  [io]   CONV sent                   17.3603 MiB
+Time in sec for current conv = [2.2] sent [17.3603] MB
+HomConv #13 called N=1, H=56, W=56, CI=256, FH=1, FW=1, CO=128, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       846.939 ms
+  [io]   CONV sent                   6.19671 MiB
+Time in sec for current conv = [0.847] sent [6.19671] MB
+
+Stage: ReLU+Rq
+Relu #21 on 401408 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 1.546
+  [time] TOTAL                       1565.63 ms
+HomConv #14 called N=1, H=58, W=58, CI=128, FH=3, FW=3, CO=128, S=2, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1363.85 ms
+  [io]   CONV sent                   6.2068 MiB
+Time in sec for current conv = [1.365] sent [6.2068] MB
+
+Stage: ReLU+Rq
+Relu #23 on 100352 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.109
+  [time] TOTAL                       114.491 ms
+HomConv #15 called N=1, H=28, W=28, CI=128, FH=1, FW=1, CO=512, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1195.12 ms
+  [io]   CONV sent                   17.3599 MiB
+Time in sec for current conv = [1.195] sent [17.3599] MB
+Truncate #5 on 401408 points by 12 bits
+HomBN #1 via element-wise mult on 401408 points
+
+Stage: ReLU+Rq
+Relu #25 on 401408 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.447
+  [time] TOTAL                       466.509 ms
+HomConv #16 called N=1, H=28, W=28, CI=512, FH=1, FW=1, CO=128, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1077.36 ms
+  [io]   CONV sent                   4.34004 MiB
+Time in sec for current conv = [1.077] sent [4.34004] MB
+
+Stage: ReLU+Rq
+Relu #27 on 100352 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.1
+  [time] TOTAL                       106.091 ms
+HomConv #17 called N=1, H=28, W=28, CI=128, FH=3, FW=3, CO=128, S=1, Padding SAME (1 1 1 1)
+
+Stage: HE-CONV
+  [time] TOTAL                       376.832 ms
+  [io]   CONV sent                   4.3474 MiB
+Time in sec for current conv = [0.378] sent [4.3474] MB
+Truncate #6 on 100352 points by 12 bits
+HomBN #2 via element-wise mult on 100352 points
+
+Stage: ReLU+Rq
+Relu #29 on 100352 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.104
+  [time] TOTAL                       108.997 ms
+HomConv #18 called N=1, H=28, W=28, CI=128, FH=1, FW=1, CO=512, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1198.67 ms
+  [io]   CONV sent                   17.3601 MiB
+Time in sec for current conv = [1.199] sent [17.3601] MB
+Truncate #7 on 401408 points by 12 bits
+HomBN #3 via element-wise mult on 401408 points
+
+Stage: ReLU+Rq
+Relu #31 on 401408 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 1.573
+  [time] TOTAL                       1591.51 ms
+HomConv #19 called N=1, H=28, W=28, CI=512, FH=1, FW=1, CO=128, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1096.03 ms
+  [io]   CONV sent                   4.33962 MiB
+Time in sec for current conv = [1.096] sent [4.33962] MB
+
+Stage: ReLU+Rq
+Relu #33 on 100352 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.107
+  [time] TOTAL                       113.054 ms
+HomConv #20 called N=1, H=28, W=28, CI=128, FH=3, FW=3, CO=128, S=1, Padding SAME (1 1 1 1)
+
+Stage: HE-CONV
+  [time] TOTAL                       378.005 ms
+  [io]   CONV sent                   4.34698 MiB
+Time in sec for current conv = [0.379] sent [4.34698] MB
+
+Stage: ReLU+Rq
+Relu #35 on 100352 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.102
+  [time] TOTAL                       107.301 ms
+HomConv #21 called N=1, H=28, W=28, CI=128, FH=1, FW=1, CO=512, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1199.76 ms
+  [io]   CONV sent                   17.3596 MiB
+Time in sec for current conv = [1.2] sent [17.3596] MB
+Truncate #8 on 401408 points by 12 bits
+HomBN #4 via element-wise mult on 401408 points
+
+Stage: ReLU+Rq
+Relu #37 on 401408 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.442
+  [time] TOTAL                       460.709 ms
+HomConv #22 called N=1, H=28, W=28, CI=512, FH=1, FW=1, CO=128, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1081.69 ms
+  [io]   CONV sent                   4.34016 MiB
+Time in sec for current conv = [1.082] sent [4.34016] MB
+
+Stage: ReLU+Rq
+Relu #39 on 100352 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.101
+  [time] TOTAL                       107.006 ms
+HomConv #23 called N=1, H=28, W=28, CI=128, FH=3, FW=3, CO=128, S=1, Padding SAME (1 1 1 1)
+
+Stage: HE-CONV
+  [time] TOTAL                       378.016 ms
+  [io]   CONV sent                   4.3469 MiB
+Time in sec for current conv = [0.379] sent [4.3469] MB
+
+Stage: ReLU+Rq
+Relu #41 on 100352 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.099
+  [time] TOTAL                       104.718 ms
+HomConv #24 called N=1, H=28, W=28, CI=128, FH=1, FW=1, CO=512, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1206.95 ms
+  [io]   CONV sent                   17.36 MiB
+Time in sec for current conv = [1.207] sent [17.36] MB
+Truncate #9 on 401408 points by 12 bits
+HomBN #5 via element-wise mult on 401408 points
+
+Stage: ReLU+Rq
+Relu #43 on 401408 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.429
+  [time] TOTAL                       448.789 ms
+HomConv #25 called N=1, H=28, W=28, CI=512, FH=1, FW=1, CO=1024, S=2, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       2334.02 ms
+  [io]   CONV sent                   30.9115 MiB
+Time in sec for current conv = [2.338] sent [30.9115] MB
+HomConv #26 called N=1, H=28, W=28, CI=512, FH=1, FW=1, CO=256, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       2197.85 ms
+  [io]   CONV sent                   8.67977 MiB
+Time in sec for current conv = [2.198] sent [8.67977] MB
+
+Stage: ReLU+Rq
+Relu #45 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 1.337
+  [time] TOTAL                       1346.85 ms
+HomConv #27 called N=1, H=30, W=30, CI=256, FH=3, FW=3, CO=256, S=2, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1363.4 ms
+  [io]   CONV sent                   8.69438 MiB
+Time in sec for current conv = [1.368] sent [8.69438] MB
+
+Stage: ReLU+Rq
+Relu #47 on 50176 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.062
+  [time] TOTAL                       65.4303 ms
+HomConv #28 called N=1, H=14, W=14, CI=256, FH=1, FW=1, CO=1024, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1363.9 ms
+  [io]   CONV sent                   30.9112 MiB
+Time in sec for current conv = [1.366] sent [30.9112] MB
+Truncate #10 on 200704 points by 12 bits
+HomBN #6 via element-wise mult on 200704 points
+
+Stage: ReLU+Rq
+Relu #49 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.22
+  [time] TOTAL                       228.979 ms
+HomConv #29 called N=1, H=14, W=14, CI=1024, FH=1, FW=1, CO=256, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1089.15 ms
+  [io]   CONV sent                   7.72799 MiB
+Time in sec for current conv = [1.091] sent [7.72799] MB
+
+Stage: ReLU+Rq
+Relu #51 on 50176 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.065
+  [time] TOTAL                       67.5742 ms
+HomConv #30 called N=1, H=14, W=14, CI=256, FH=3, FW=3, CO=256, S=1, Padding SAME (1 1 1 1)
+
+Stage: HE-CONV
+  [time] TOTAL                       410.807 ms
+  [io]   CONV sent                   7.73305 MiB
+Time in sec for current conv = [0.416] sent [7.73305] MB
+
+Stage: ReLU+Rq
+Relu #53 on 50176 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.061
+  [time] TOTAL                       63.6674 ms
+HomConv #31 called N=1, H=14, W=14, CI=256, FH=1, FW=1, CO=1024, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1360.84 ms
+  [io]   CONV sent                   30.9107 MiB
+Time in sec for current conv = [1.363] sent [30.9107] MB
+Truncate #11 on 200704 points by 12 bits
+HomBN #7 via element-wise mult on 200704 points
+
+Stage: ReLU+Rq
+Relu #55 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.205
+  [time] TOTAL                       214.724 ms
+HomConv #32 called N=1, H=14, W=14, CI=1024, FH=1, FW=1, CO=256, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1097.98 ms
+  [io]   CONV sent                   7.7276 MiB
+Time in sec for current conv = [1.1] sent [7.7276] MB
+
+Stage: ReLU+Rq
+Relu #57 on 50176 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.061
+  [time] TOTAL                       63.8228 ms
+HomConv #33 called N=1, H=14, W=14, CI=256, FH=3, FW=3, CO=256, S=1, Padding SAME (1 1 1 1)
+
+Stage: HE-CONV
+  [time] TOTAL                       412.127 ms
+  [io]   CONV sent                   7.73269 MiB
+Time in sec for current conv = [0.417] sent [7.73269] MB
+
+Stage: ReLU+Rq
+Relu #59 on 50176 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.06
+  [time] TOTAL                       63.4592 ms
+HomConv #34 called N=1, H=14, W=14, CI=256, FH=1, FW=1, CO=1024, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1351.2 ms
+  [io]   CONV sent                   30.9105 MiB
+Time in sec for current conv = [1.353] sent [30.9105] MB
+Truncate #12 on 200704 points by 12 bits
+HomBN #8 via element-wise mult on 200704 points
+
+Stage: ReLU+Rq
+Relu #61 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.212
+  [time] TOTAL                       220.908 ms
+HomConv #35 called N=1, H=14, W=14, CI=1024, FH=1, FW=1, CO=256, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1094.6 ms
+  [io]   CONV sent                   7.72763 MiB
+Time in sec for current conv = [1.096] sent [7.72763] MB
+
+Stage: ReLU+Rq
+Relu #63 on 50176 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.061
+  [time] TOTAL                       63.9935 ms
+HomConv #36 called N=1, H=14, W=14, CI=256, FH=3, FW=3, CO=256, S=1, Padding SAME (1 1 1 1)
+
+Stage: HE-CONV
+  [time] TOTAL                       406.387 ms
+  [io]   CONV sent                   7.73342 MiB
+Time in sec for current conv = [0.411] sent [7.73342] MB
+
+Stage: ReLU+Rq
+Relu #65 on 50176 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.061
+  [time] TOTAL                       63.683 ms
+HomConv #37 called N=1, H=14, W=14, CI=256, FH=1, FW=1, CO=1024, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1353.39 ms
+  [io]   CONV sent                   30.911 MiB
+Time in sec for current conv = [1.355] sent [30.911] MB
+Truncate #13 on 200704 points by 12 bits
+HomBN #9 via element-wise mult on 200704 points
+
+Stage: ReLU+Rq
+Relu #67 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.204
+  [time] TOTAL                       213.158 ms
+HomConv #38 called N=1, H=14, W=14, CI=1024, FH=1, FW=1, CO=256, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1091.03 ms
+  [io]   CONV sent                   7.7277 MiB
+Time in sec for current conv = [1.093] sent [7.7277] MB
+
+Stage: ReLU+Rq
+Relu #69 on 50176 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.06
+  [time] TOTAL                       63.1592 ms
+HomConv #39 called N=1, H=14, W=14, CI=256, FH=3, FW=3, CO=256, S=1, Padding SAME (1 1 1 1)
+
+Stage: HE-CONV
+  [time] TOTAL                       410.612 ms
+  [io]   CONV sent                   7.73353 MiB
+Time in sec for current conv = [0.416] sent [7.73353] MB
+
+Stage: ReLU+Rq
+Relu #71 on 50176 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.061
+  [time] TOTAL                       64.0149 ms
+HomConv #40 called N=1, H=14, W=14, CI=256, FH=1, FW=1, CO=1024, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1359.68 ms
+  [io]   CONV sent                   30.9108 MiB
+Time in sec for current conv = [1.362] sent [30.9108] MB
+Truncate #14 on 200704 points by 12 bits
+HomBN #10 via element-wise mult on 200704 points
+
+Stage: ReLU+Rq
+Relu #73 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.21
+  [time] TOTAL                       218.741 ms
+HomConv #41 called N=1, H=14, W=14, CI=1024, FH=1, FW=1, CO=256, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1095.32 ms
+  [io]   CONV sent                   7.72785 MiB
+Time in sec for current conv = [1.097] sent [7.72785] MB
+
+Stage: ReLU+Rq
+Relu #75 on 50176 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.06
+  [time] TOTAL                       63.1934 ms
+HomConv #42 called N=1, H=14, W=14, CI=256, FH=3, FW=3, CO=256, S=1, Padding SAME (1 1 1 1)
+
+Stage: HE-CONV
+  [time] TOTAL                       411.108 ms
+  [io]   CONV sent                   7.73325 MiB
+Time in sec for current conv = [0.416] sent [7.73325] MB
+
+Stage: ReLU+Rq
+Relu #77 on 50176 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.06
+  [time] TOTAL                       63.2576 ms
+HomConv #43 called N=1, H=14, W=14, CI=256, FH=1, FW=1, CO=1024, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1358.99 ms
+  [io]   CONV sent                   30.9113 MiB
+Time in sec for current conv = [1.361] sent [30.9113] MB
+Truncate #15 on 200704 points by 12 bits
+HomBN #11 via element-wise mult on 200704 points
+
+Stage: ReLU+Rq
+Relu #79 on 200704 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.212
+  [time] TOTAL                       221.552 ms
+HomConv #44 called N=1, H=14, W=14, CI=1024, FH=1, FW=1, CO=2048, S=2, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       2687.7 ms
+  [io]   CONV sent                   59.9102 MiB
+Time in sec for current conv = [2.715] sent [59.9102] MB
+HomConv #45 called N=1, H=14, W=14, CI=1024, FH=1, FW=1, CO=512, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       2298.47 ms
+  [io]   CONV sent                   15.4557 MiB
+Time in sec for current conv = [2.302] sent [15.4557] MB
+
+Stage: ReLU+Rq
+Relu #81 on 100352 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.124
+  [time] TOTAL                       128.923 ms
+HomConv #46 called N=1, H=16, W=16, CI=512, FH=3, FW=3, CO=512, S=2, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1428.92 ms
+  [io]   CONV sent                   15.4658 MiB
+Time in sec for current conv = [1.488] sent [15.4658] MB
+
+Stage: ReLU+Rq
+Relu #83 on 25088 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.051
+  [time] TOTAL                       53.3883 ms
+HomConv #47 called N=1, H=7, W=7, CI=512, FH=1, FW=1, CO=2048, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1792.61 ms
+  [io]   CONV sent                   59.9102 MiB
+Time in sec for current conv = [1.806] sent [59.9102] MB
+Truncate #16 on 100352 points by 12 bits
+HomBN #12 via element-wise mult on 100352 points
+
+Stage: ReLU+Rq
+Relu #85 on 100352 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.114
+  [time] TOTAL                       119.529 ms
+HomConv #48 called N=1, H=7, W=7, CI=2048, FH=1, FW=1, CO=512, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1136.84 ms
+  [io]   CONV sent                   14.9784 MiB
+Time in sec for current conv = [1.145] sent [14.9784] MB
+
+Stage: ReLU+Rq
+Relu #87 on 25088 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.051
+  [time] TOTAL                       53.0651 ms
+HomConv #49 called N=1, H=7, W=7, CI=512, FH=3, FW=3, CO=512, S=1, Padding SAME (1 1 1 1)
+
+Stage: HE-CONV
+  [time] TOTAL                       620.164 ms
+  [io]   CONV sent                   14.9843 MiB
+Time in sec for current conv = [0.674] sent [14.9843] MB
+
+Stage: ReLU+Rq
+Relu #89 on 25088 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.052
+  [time] TOTAL                       53.954 ms
+HomConv #50 called N=1, H=7, W=7, CI=512, FH=1, FW=1, CO=2048, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1793.03 ms
+  [io]   CONV sent                   59.9117 MiB
+Time in sec for current conv = [1.805] sent [59.9117] MB
+Truncate #17 on 100352 points by 12 bits
+HomBN #13 via element-wise mult on 100352 points
+
+Stage: ReLU+Rq
+Relu #91 on 100352 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.115
+  [time] TOTAL                       120.284 ms
+HomConv #51 called N=1, H=7, W=7, CI=2048, FH=1, FW=1, CO=512, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1133.54 ms
+  [io]   CONV sent                   14.9777 MiB
+Time in sec for current conv = [1.142] sent [14.9777] MB
+
+Stage: ReLU+Rq
+Relu #93 on 25088 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.061
+  [time] TOTAL                       63.1181 ms
+HomConv #52 called N=1, H=7, W=7, CI=512, FH=3, FW=3, CO=512, S=1, Padding SAME (1 1 1 1)
+
+Stage: HE-CONV
+  [time] TOTAL                       622.412 ms
+  [io]   CONV sent                   14.9843 MiB
+Time in sec for current conv = [0.68] sent [14.9843] MB
+
+Stage: ReLU+Rq
+Relu #95 on 25088 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.052
+  [time] TOTAL                       54.3057 ms
+HomConv #53 called N=1, H=7, W=7, CI=512, FH=1, FW=1, CO=2048, S=1, Padding VALID (0 0 0 0)
+
+Stage: HE-CONV
+  [time] TOTAL                       1802.05 ms
+  [io]   CONV sent                   59.9114 MiB
+Time in sec for current conv = [1.815] sent [59.9114] MB
+Truncate #18 on 100352 points by 12 bits
+HomBN #14 via element-wise mult on 100352 points
+
+Stage: ReLU+Rq
+Relu #97 on 100352 points, truncate=1 by 12 bits
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Mill dotrunc 1 on 16 bits using b = 4
+Time in sec for current relu = 0.114
+  [time] TOTAL                       118.984 ms
+AvgPool 1 called N=1, H=1, W=1, C=2048, ksizeH=7, ksizeW=7
+Time in sec for current avgpool = 0.02
+Time in sec for current matmul = 0.1
+ArgMax 1 called, s1=1, s2=1001
