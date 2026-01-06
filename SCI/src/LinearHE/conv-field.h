@@ -36,53 +36,55 @@ typedef Eigen::Matrix<uint64_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
 typedef std::vector<Channel> Image;
 typedef std::vector<Image> Filters;
 
-struct ConvMetadata {
-  int slot_count;
-  // Number of plaintext slots in a half ciphertext
-  // (since ciphertexts are a two column matrix)
-  int32_t pack_num;
-  // Number of Channels that can fit in a half ciphertext
-  int32_t chans_per_half;
-  // Number of input ciphertexts for convolution
-  int32_t inp_ct;
-  // Number of output ciphertexts
-  int32_t out_ct;
-  // Image and Filters metadata
-  int32_t image_h;
-  int32_t image_w;
-  size_t image_size;
-  int32_t inp_chans;
-  int32_t filter_h;
-  int32_t filter_w;
-  int32_t filter_size;
-  int32_t out_chans;
-  // How many total ciphertext halves the input and output take up
-  int32_t inp_halves;
-  int32_t out_halves;
-  // The modulo used when deciding which output channels to pack into a mask
-  int32_t out_mod;
-  // How many permutations of ciphertexts are needed to generate all
-  // intermediate rotation sets
-  int32_t half_perms;
-  /* The number of rotations for each ciphertext half */
-  int32_t half_rots;
-  // Total number of convolutions needed to generate all
-  // intermediate rotations sets
-  int32_t convs;
-  int32_t stride_h;
-  int32_t stride_w;
-  int32_t output_h;
-  int32_t output_w;
-  int32_t pad_t;
-  int32_t pad_b;
-  int32_t pad_r;
-  int32_t pad_l;
+struct ConvMetadata
+{
+    int slot_count;
+    // Number of plaintext slots in a half ciphertext
+    // (since ciphertexts are a two column matrix)
+    int32_t pack_num;
+    // Number of Channels that can fit in a half ciphertext
+    int32_t chans_per_half;
+    // Number of input ciphertexts for convolution
+    int32_t inp_ct;
+    // Number of output ciphertexts
+    int32_t out_ct;
+    // Image and Filters metadata
+    int32_t image_h;
+    int32_t image_w;
+    size_t image_size;
+    int32_t inp_chans;
+    int32_t filter_h;
+    int32_t filter_w;
+    int32_t filter_size;
+    int32_t out_chans;
+    // How many total ciphertext halves the input and output take up
+    int32_t inp_halves;
+    int32_t out_halves;
+    // The modulo used when deciding which output channels to pack into a mask
+    int32_t out_mod;
+    // How many permutations of ciphertexts are needed to generate all
+    // intermediate rotation sets
+    int32_t half_perms;
+    /* The number of rotations for each ciphertext half */
+    int32_t half_rots;
+    // Total number of convolutions needed to generate all
+    // intermediate rotations sets
+    int32_t convs;
+    int32_t stride_h;
+    int32_t stride_w;
+    int32_t output_h;
+    int32_t output_w;
+    int32_t pad_t;
+    int32_t pad_b;
+    int32_t pad_r;
+    int32_t pad_l;
 };
 
 /* Use casting to do two conditionals instead of one - check if a > 0 and a < b
  */
-inline bool condition_check(int a, int b) {
-  return static_cast<unsigned>(a) < static_cast<unsigned>(b);
+inline bool condition_check(int a, int b)
+{
+    return static_cast<unsigned>(a) < static_cast<unsigned>(b);
 }
 
 Image pad_image(ConvMetadata data, Image &image);
@@ -127,89 +129,92 @@ uint64_t **HE_decrypt(std::vector<seal::Ciphertext> &enc_result,
                       const ConvMetadata &data, seal::Decryptor &decryptor,
                       seal::BatchEncoder &batch_encoder);
 
-class ConvField {
- public:
-  int party;
-  sci::NetIO *io;
-  seal::SEALContext *context[2];
-  seal::Encryptor *encryptor[2];
-  seal::Decryptor *decryptor[2];
-  seal::Evaluator *evaluator[2];
-  seal::BatchEncoder *encoder[2];
-  seal::GaloisKeys *gal_keys[2];
-  seal::Ciphertext *zero[2];
-  size_t slot_count;
-  ConvMetadata data;
+class ConvField
+{
+public:
+    int party;
+    sci::NetIO *io;
+    seal::SEALContext *context[2];
+    seal::Encryptor *encryptor[2];
+    seal::Decryptor *decryptor[2];
+    seal::Evaluator *evaluator[2];
+    seal::BatchEncoder *encoder[2];
+    seal::GaloisKeys *gal_keys[2];
+    seal::Ciphertext *zero[2];
+    size_t slot_count;
+    ConvMetadata data;
 
-  ConvField(int party, sci::NetIO *io);
+    ConvField(int party, sci::NetIO *io);
 
-  ~ConvField();
+    ~ConvField();
 
-  void configure();
+    void configure();
 
-  Image ideal_functionality(Image &image, const Filters &filters);
+    Image ideal_functionality(Image &image, const Filters &filters);
 
-  void non_strided_conv(int32_t H, int32_t W, int32_t CI, int32_t FH,
-                        int32_t FW, int32_t CO, Image *image, Filters *filters,
-                        std::vector<std::vector<std::vector<uint64_t>>> &outArr,
-                        bool verbose = false);
+    void non_strided_conv(int32_t H, int32_t W, int32_t CI, int32_t FH,
+                          int32_t FW, int32_t CO, Image *image, Filters *filters,
+                          std::vector<std::vector<std::vector<uint64_t>>> &outArr,
+                          bool verbose = false);
 
-  void convolution(
-      int32_t N, int32_t H, int32_t W, int32_t CI, int32_t FH, int32_t FW,
-      int32_t CO, int32_t zPadHLeft, int32_t zPadHRight, int32_t zPadWLeft,
-      int32_t zPadWRight, int32_t strideH, int32_t strideW,
-      const std::vector<std::vector<std::vector<std::vector<uint64_t>>>>
-          &inputArr,
-      const std::vector<std::vector<std::vector<std::vector<uint64_t>>>>
-          &filterArr,
-      std::vector<std::vector<std::vector<std::vector<uint64_t>>>> &outArr,
-      bool verify_output = false, bool verbose = false);
+    void convolution(
+        int32_t N, int32_t H, int32_t W, int32_t CI, int32_t FH, int32_t FW,
+        int32_t CO, int32_t zPadHLeft, int32_t zPadHRight, int32_t zPadWLeft,
+        int32_t zPadWRight, int32_t strideH, int32_t strideW,
+        const std::vector<std::vector<std::vector<std::vector<uint64_t>>>>
+            &inputArr,
+        const std::vector<std::vector<std::vector<std::vector<uint64_t>>>>
+            &filterArr,
+        std::vector<std::vector<std::vector<std::vector<uint64_t>>>> &outArr,
+        bool verify_output = false, bool verbose = false);
 
-  void verify(int H, int W, int CI, int CO, Image &image,
-              const Filters *filters,
-              const std::vector<std::vector<std::vector<std::vector<uint64_t>>>>
-                  &outArr);
+    void verify(int H, int W, int CI, int CO, Image &image,
+                const Filters *filters,
+                const std::vector<std::vector<std::vector<std::vector<uint64_t>>>>
+                    &outArr);
 };
 
 #ifdef SCI_CONV_SS
 #include "gemini/mvp/hom_conv2d_ss.h"
 
-namespace gemini {
-class HomConv2DSSField {
- public:
-  using Meta = HomConv2DSS::Meta;
+namespace gemini
+{
+    class HomConv2DSSField
+    {
+    public:
+        using Meta = HomConv2DSS::Meta;
 
-  HomConv2DSSField(int party, sci::NetIO *io, size_t nthreads = 1);
+        HomConv2DSSField(int party, sci::NetIO *io, size_t nthreads = 1);
 
-  ~HomConv2DSSField() = default;
+        ~HomConv2DSSField() = default;
 
-  void run(const Tensor<uint64_t> &in_tensor,
-           const std::vector<Tensor<uint64_t>> &filters, const Meta &meta,
-           Tensor<uint64_t> &out_tensor) const;
+        void run(const Tensor<uint64_t> &in_tensor,
+                 const std::vector<Tensor<uint64_t>> &filters, const Meta &meta,
+                 Tensor<uint64_t> &out_tensor) const;
 
-  uint64_t io_counter() const { return io_ ? io_->counter : 0; }
+        uint64_t io_counter() const { return io_ ? io_->counter : 0; }
 
-  int party() const { return party_; }
+        int party() const { return party_; }
 
-  bool verify(const Tensor<uint64_t> &int_tensor,
-              const std::vector<Tensor<uint64_t>> &filters, const Meta &meta,
-              const Tensor<uint64_t> &computed_tensor,
-              int nbit_precision) const;
+        bool verify(const Tensor<uint64_t> &int_tensor,
+                    const std::vector<Tensor<uint64_t>> &filters, const Meta &meta,
+                    const Tensor<uint64_t> &computed_tensor,
+                    int nbit_precision) const;
 
- private:
-  unsigned select_impl(TensorShape fshape) const;
+    private:
+        unsigned select_impl(TensorShape fshape) const;
 
-  int party_{-1};
-  sci::NetIO *io_{nullptr};
-  size_t nthreads_{1};
+        int party_{-1};
+        sci::NetIO *io_{nullptr};
+        size_t nthreads_{1};
 
-  std::shared_ptr<seal::SEALContext> context_[2]{nullptr, nullptr};
-  std::shared_ptr<seal::SecretKey> sk_[2]{nullptr, nullptr};   // Bob only
-  std::shared_ptr<seal::PublicKey> pk_[2]{nullptr, nullptr};   // Alice only
-  HomConv2DSS impl_[2];
-};
+        std::shared_ptr<seal::SEALContext> context_[2]{nullptr, nullptr};
+        std::shared_ptr<seal::SecretKey> sk_[2]{nullptr, nullptr}; // Bob only
+        std::shared_ptr<seal::PublicKey> pk_[2]{nullptr, nullptr}; // Alice only
+        HomConv2DSS impl_[2];
+    };
 
-}  // namespace gemini
-#endif  // SCI_CONV_SS
+} // namespace gemini
+#endif // SCI_CONV_SS
 
 #endif

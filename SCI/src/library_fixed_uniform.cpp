@@ -880,6 +880,9 @@ void Relu(int32_t size, intType *inArr, intType *outArr, int sf,
 {
 #if USE_CHEETAH
   gemini::perf::StageTimer relu_stage("Stage: ReLU+Rq");
+  gemini::perf::MultiIOScope relu_io([&]
+                                     { return sum_sent_bytes(); },
+                                     "Stage: ReLU+Rq");
 #endif
 
 #ifdef LOG_LAYERWISE
@@ -1077,6 +1080,8 @@ void Relu(int32_t size, intType *inArr, intType *outArr, int sf,
 
 #if USE_CHEETAH
   relu_stage.done();
+  auto relu_bytes = relu_io.finish();
+  std::cerr << "[io] ReLU sent total: " << relu_bytes.mib() << " MiB\n";
 #endif
 }
 
@@ -2310,4 +2315,14 @@ void Floor(int32_t s1, intType *inArr, intType *outArr, int32_t sf)
 {
   // Not being used in any of our networks right now
   assert(false);
+}
+
+uint64_t sum_sent_bytes()
+{
+  uint64_t s = 0;
+  for (int i = 0; i < num_threads; ++i)
+  {
+    s += ioArr[i]->counter; // sent bytes on that channel
+  }
+  return s;
 }

@@ -30,12 +30,12 @@ SOFTWARE.
 //  can result in hard in trace bugs when expanded around expressions like 1-2.
 #define Arr1DIdxRowM(arr, s0, i) (*((arr) + (i)))
 #define Arr2DIdxRowM(arr, s0, s1, i, j) (*((arr) + (i) * (s1) + (j)))
-#define Arr3DIdxRowM(arr, s0, s1, s2, i, j, k)                                 \
+#define Arr3DIdxRowM(arr, s0, s1, s2, i, j, k) \
   (*((arr) + (i) * (s1) * (s2) + (j) * (s2) + (k)))
-#define Arr4DIdxRowM(arr, s0, s1, s2, s3, i, j, k, l)                          \
+#define Arr4DIdxRowM(arr, s0, s1, s2, s3, i, j, k, l) \
   (*((arr) + (i) * (s1) * (s2) * (s3) + (j) * (s2) * (s3) + (k) * (s3) + (l)))
-#define Arr5DIdxRowM(arr, s0, s1, s2, s3, s4, i, j, k, l, m)                   \
-  (*((arr) + (i) * (s1) * (s2) * (s3) * (s4) + (j) * (s2) * (s3) * (s4) +      \
+#define Arr5DIdxRowM(arr, s0, s1, s2, s3, s4, i, j, k, l, m)              \
+  (*((arr) + (i) * (s1) * (s2) * (s3) * (s4) + (j) * (s2) * (s3) * (s4) + \
      (k) * (s3) * (s4) + (l) * (s4) + (m)))
 
 #define Arr2DIdxColM(arr, s0, s1, i, j) (*((arr) + (j) * (s0) + (i)))
@@ -66,10 +66,12 @@ void Conv2DGroupWrapper(signedIntType N, signedIntType H, signedIntType W,
 void ElemWiseActModelVectorMult(int32_t size, intType *inArr,
                                 intType *multArrVec, intType *outputArr);
 
-#if USE_CHEETAH 
-void BatchNorm(int32_t B, int32_t H, int32_t W, int32_t C, 
-               const intType *inputAr, const intType *scales, const intType *bias, 
+#if USE_CHEETAH
+void BatchNorm(int32_t B, int32_t H, int32_t W, int32_t C,
+               const intType *inputAr, const intType *scales, const intType *bias,
                intType *outArr);
+
+uint64_t sum_sent_bytes();
 #endif
 
 void ArgMax(int32_t s1, int32_t s2, intType *inArr, intType *outArr);
@@ -113,21 +115,25 @@ void Floor(int32_t s1, intType *inArr, intType *outArr, int32_t sf);
 
 inline void ClearMemSecret1(int32_t s1, intType *arr) { delete[] arr; }
 
-inline void ClearMemSecret2(int32_t s1, int32_t s2, intType *arr) {
+inline void ClearMemSecret2(int32_t s1, int32_t s2, intType *arr)
+{
   delete[] arr; // At the end of the day, everything is done using 1D array
 }
 
-inline void ClearMemSecret3(int32_t s1, int32_t s2, int32_t s3, intType *arr) {
+inline void ClearMemSecret3(int32_t s1, int32_t s2, int32_t s3, intType *arr)
+{
   delete[] arr;
 }
 
 inline void ClearMemSecret4(int32_t s1, int32_t s2, int32_t s3, int32_t s4,
-                            intType *arr) {
+                            intType *arr)
+{
   delete[] arr;
 }
 
 inline void ClearMemSecret5(int32_t s1, int32_t s2, int32_t s3, int32_t s4,
-                            int32_t s5, intType *arr) {
+                            int32_t s5, intType *arr)
+{
   delete[] arr;
 }
 
@@ -135,21 +141,25 @@ inline void ClearMemPublic(int32_t x) { return; }
 
 inline void ClearMemPublic1(int32_t s1, int32_t *arr) { delete[] arr; }
 
-inline void ClearMemPublic2(int32_t s1, int32_t s2, int32_t *arr) {
+inline void ClearMemPublic2(int32_t s1, int32_t s2, int32_t *arr)
+{
   delete[] arr;
 }
 
-inline void ClearMemPublic3(int32_t s1, int32_t s2, int32_t s3, int32_t *arr) {
+inline void ClearMemPublic3(int32_t s1, int32_t s2, int32_t s3, int32_t *arr)
+{
   delete[] arr;
 }
 
 inline void ClearMemPublic4(int32_t s1, int32_t s2, int32_t s3, int32_t s4,
-                            int32_t *arr) {
+                            int32_t *arr)
+{
   delete[] arr;
 }
 
 inline void ClearMemPublic5(int32_t s1, int32_t s2, int32_t s3, int32_t s4,
-                            int32_t s5, int32_t *arr) {
+                            int32_t s5, int32_t *arr)
+{
   delete[] arr;
 }
 
@@ -157,41 +167,52 @@ inline void ClearMemPublic(int64_t x) { return; }
 
 inline void ClearMemPublic1(int32_t s1, int64_t *arr) { delete[] arr; }
 
-inline void ClearMemPublic2(int32_t s1, int32_t s2, int64_t *arr) {
+inline void ClearMemPublic2(int32_t s1, int32_t s2, int64_t *arr)
+{
   delete[] arr;
 }
 
-inline void ClearMemPublic3(int32_t s1, int32_t s2, int32_t s3, int64_t *arr) {
+inline void ClearMemPublic3(int32_t s1, int32_t s2, int32_t s3, int64_t *arr)
+{
   delete[] arr;
 }
 
 inline void ClearMemPublic4(int32_t s1, int32_t s2, int32_t s3, int32_t s4,
-                            int64_t *arr) {
+                            int64_t *arr)
+{
   delete[] arr;
 }
 
 inline void ClearMemPublic5(int32_t s1, int32_t s2, int32_t s3, int32_t s4,
-                            int32_t s5, int64_t *arr) {
+                            int32_t s5, int64_t *arr)
+{
   delete[] arr;
 }
 
-template <typename T> T *make_array(size_t s1) { return new T[s1]; }
+template <typename T>
+T *make_array(size_t s1) { return new T[s1]; }
 
-template <typename T> T *make_array(size_t s1, size_t s2) {
+template <typename T>
+T *make_array(size_t s1, size_t s2)
+{
   return new T[s1 * s2];
 }
 
-template <typename T> T *make_array(size_t s1, size_t s2, size_t s3) {
+template <typename T>
+T *make_array(size_t s1, size_t s2, size_t s3)
+{
   return new T[s1 * s2 * s3];
 }
 
 template <typename T>
-T *make_array(size_t s1, size_t s2, size_t s3, size_t s4) {
+T *make_array(size_t s1, size_t s2, size_t s3, size_t s4)
+{
   return new T[s1 * s2 * s3 * s4];
 }
 
 template <typename T>
-T *make_array(size_t s1, size_t s2, size_t s3, size_t s4, size_t s5) {
+T *make_array(size_t s1, size_t s2, size_t s3, size_t s4, size_t s5)
+{
   return new T[s1 * s2 * s3 * s4 * s5];
 }
 

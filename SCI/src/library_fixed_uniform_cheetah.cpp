@@ -305,6 +305,7 @@ void Conv2DWrapper(signedIntType N, signedIntType H, signedIntType W,
 #endif
 
   gemini::perf::StageTimer conv_stage("Stage: HE-CONV");
+  gemini::perf::IOScope conv_io(&cheetah_linear->io()->counter, "send_client_share_CTs");
 
   for (int i = 0; i < N; ++i)
   {
@@ -338,6 +339,9 @@ void Conv2DWrapper(signedIntType N, signedIntType H, signedIntType W,
   }
 
   conv_stage.done();
+  auto d = conv_io.finish();
+  std::cout << "  [io]   " << std::left << std::setw(28) << "CONV sent"
+            << d.mib() << " MiB\n";
 
 #ifdef LOG_LAYERWISE
   auto temp = TIMER_TILL_NOW;
